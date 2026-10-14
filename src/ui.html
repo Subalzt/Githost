@@ -1,0 +1,576 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Folder Sync</title>
+<style>
+:root {
+  --bg: #ffffff; --side: #f5f5f7; --text: #1d1d1f; --muted: #6e6e73; --faint: #a1a1a6;
+  --line: rgba(0,0,0,.08); --hover: rgba(0,0,0,.045); --sel: rgba(0,0,0,.075);
+  --btn: #1d1d1f; --btn-text: #ffffff; --field: #f2f2f4; --ok: #2f9e5b; --bad: #d1343b;
+  --add-bg: rgba(47,158,91,.12); --del-bg: rgba(209,52,59,.11); --shade: rgba(0,0,0,.28);
+  color-scheme: light;
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #000000; --side: #0e0e0f; --text: #f5f5f7; --muted: #98989d; --faint: #636366;
+    --line: rgba(255,255,255,.09); --hover: rgba(255,255,255,.05); --sel: rgba(255,255,255,.09);
+    --btn: #f5f5f7; --btn-text: #000000; --field: #1c1c1e; --ok: #3fbf72; --bad: #ff5a5f;
+    --add-bg: rgba(63,191,114,.14); --del-bg: rgba(255,90,95,.13); --shade: rgba(0,0,0,.6);
+    color-scheme: dark;
+  }
+}
+* { box-sizing: border-box; }
+html, body { height: 100%; margin: 0; }
+body {
+  background: var(--bg); color: var(--text);
+  font: 14px/1.45 "Segoe UI Variable Text", "Segoe UI", system-ui, -apple-system, sans-serif;
+  -webkit-font-smoothing: antialiased; overflow: hidden;
+}
+button { font: inherit; color: inherit; background: none; border: 0; padding: 0; cursor: pointer; }
+input, textarea { font: inherit; color: inherit; }
+.app { display: grid; grid-template-columns: 252px 1fr; height: 100vh; }
+
+/* Sidebar */
+aside { background: var(--side); border-right: 1px solid var(--line); display: flex; flex-direction: column; min-height: 0; padding: 18px 10px 12px; }
+.label { font-size: 11.5px; font-weight: 600; color: var(--muted); padding: 0 10px; margin: 6px 0 6px; letter-spacing: .01em; }
+.nav { display: flex; flex-direction: column; gap: 1px; overflow-y: auto; }
+.row { display: flex; align-items: center; gap: 10px; width: 100%; text-align: left; padding: 7px 10px; border-radius: 8px; }
+button.row:hover { background: var(--hover); }
+.row.sel, button.row.sel:hover { background: var(--sel); }
+.row .t { flex: 1; min-width: 0; }
+.row .n { font-weight: 500; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.row .s { font-size: 12px; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.dot { width: 7px; height: 7px; border-radius: 50%; background: var(--faint); flex: none; }
+.dot.ok { background: var(--ok); }
+.dot.busy { background: transparent; border: 1.5px solid var(--muted); border-top-color: transparent; width: 10px; height: 10px; animation: spin .8s linear infinite; }
+.dot.bad { background: var(--bad); }
+@keyframes spin { to { transform: rotate(360deg); } }
+.links { display: flex; flex-direction: column; padding: 6px 0 0; }
+.link { text-align: left; padding: 6px 10px; border-radius: 8px; color: var(--muted); }
+.link:hover { color: var(--text); background: var(--hover); }
+.spacer { flex: 1; min-height: 16px; }
+.me { display: flex; align-items: center; justify-content: space-between; padding: 10px 10px 0; border-top: 1px solid var(--line); margin-top: 8px; font-size: 13px; }
+.me .who { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-weight: 500; }
+.icon-btn { width: 28px; height: 28px; border-radius: 7px; display: grid; place-items: center; color: var(--muted); flex: none; }
+.icon-btn:hover { background: var(--hover); color: var(--text); }
+.empty-note { font-size: 12.5px; color: var(--faint); padding: 2px 10px 6px; }
+
+/* Main */
+main { min-width: 0; min-height: 0; display: flex; flex-direction: column; }
+.head { padding: 26px 36px 0; }
+.head-top { display: flex; align-items: flex-start; gap: 16px; }
+h1 { font-size: 26px; font-weight: 650; letter-spacing: -.02em; margin: 0; line-height: 1.15; }
+.path { color: var(--muted); font-size: 12.5px; margin-top: 4px; text-align: left; word-break: break-all; }
+.path:hover { color: var(--text); text-decoration: underline; text-underline-offset: 2px; }
+.code { margin-left: auto; display: flex; align-items: center; gap: 8px; flex: none; }
+.code .lbl { font-size: 12px; color: var(--muted); }
+.code button.c { font: 600 13px/1 ui-monospace, "Cascadia Mono", Consolas, monospace; letter-spacing: .06em; padding: 8px 11px; border-radius: 8px; background: var(--field); }
+.code button.c:hover { background: var(--sel); }
+.status { display: flex; align-items: center; gap: 8px; margin-top: 14px; color: var(--muted); font-size: 13px; flex-wrap: wrap; }
+.status .err { color: var(--bad); }
+.tabs { display: flex; gap: 22px; padding: 0 36px; margin-top: 18px; border-bottom: 1px solid var(--line); }
+.tab { padding: 9px 0 10px; color: var(--muted); font-weight: 500; border-bottom: 2px solid transparent; margin-bottom: -1px; }
+.tab:hover { color: var(--text); }
+.tab.on { color: var(--text); border-bottom-color: var(--text); }
+.tab .count { font-size: 12px; color: var(--muted); margin-left: 4px; font-weight: 400; }
+.body { flex: 1; overflow-y: auto; padding: 22px 36px 40px; }
+.narrow { max-width: 760px; }
+
+/* Controls */
+.btn { background: var(--btn); color: var(--btn-text); padding: 8px 16px; border-radius: 8px; font-weight: 550; white-space: nowrap; }
+.btn:hover { opacity: .88; }
+.btn:disabled { opacity: .35; cursor: default; }
+.btn.plain { background: var(--field); color: var(--text); }
+.btn.plain:hover { background: var(--sel); opacity: 1; }
+.field { width: 100%; background: var(--field); border: 1px solid transparent; border-radius: 8px; padding: 9px 12px; outline: none; }
+.field:focus { border-color: var(--faint); }
+textarea.field { resize: none; height: 64px; display: block; }
+.line { display: flex; gap: 8px; align-items: center; }
+.small { font-size: 12.5px; color: var(--muted); }
+.error { color: var(--bad); font-size: 13px; }
+.error:empty { display: none; }
+.textlink { color: var(--muted); text-decoration: underline; text-underline-offset: 2px; }
+.textlink:hover { color: var(--text); }
+
+/* Repo bar */
+.repo { display: flex; align-items: center; gap: 12px; margin-bottom: 16px; flex-wrap: wrap; }
+.repo .name { font-weight: 600; color: var(--text); }
+.repo .branch { font: 12px ui-monospace, "Cascadia Mono", Consolas, monospace; color: var(--muted); background: var(--field); padding: 3px 7px; border-radius: 6px; }
+.repo .right { margin-left: auto; display: flex; gap: 8px; }
+.composer { display: grid; grid-template-columns: 1fr auto; gap: 10px; align-items: end; }
+.as { margin-top: 8px; }
+
+/* Lists */
+.list { margin-top: 20px; border-top: 1px solid var(--line); }
+.item { display: flex; align-items: center; gap: 12px; padding: 9px 2px; border-bottom: 1px solid var(--line); min-width: 0; }
+.item .kind { width: 58px; flex: none; font-size: 12px; color: var(--muted); }
+.item .kind.new { color: var(--ok); }
+.item .kind.deleted { color: var(--bad); }
+.item .p { flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.dir { color: var(--muted); }
+.item .by { font-size: 12.5px; color: var(--muted); flex: none; }
+.commit { padding: 12px 2px; border-bottom: 1px solid var(--line); cursor: pointer; }
+.commit:hover .subj { text-decoration: underline; text-underline-offset: 2px; }
+.commit .subj { font-weight: 500; }
+.commit .meta { font-size: 12.5px; color: var(--muted); margin-top: 2px; }
+.commit .meta .h { font-family: ui-monospace, "Cascadia Mono", Consolas, monospace; }
+.tag { font-size: 11.5px; padding: 1px 6px; border-radius: 5px; background: var(--field); color: var(--muted); margin-left: 6px; font-weight: 400; }
+.detail { padding: 6px 0 14px; border-bottom: 1px solid var(--line); }
+.detail .msg { white-space: pre-wrap; color: var(--muted); font-size: 13px; margin: 0 0 8px; }
+.file { display: flex; gap: 10px; padding: 5px 8px; border-radius: 6px; cursor: pointer; font-size: 13px; }
+.file:hover { background: var(--hover); }
+.file .p { flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.file .num { font: 12px ui-monospace, "Cascadia Mono", Consolas, monospace; color: var(--muted); }
+.file .num .a { color: var(--ok); } .file .num .d { color: var(--bad); }
+pre.diff { margin: 6px 0 10px; padding: 10px 0; background: var(--field); border-radius: 8px; overflow: auto; font: 12px/1.5 ui-monospace, "Cascadia Mono", Consolas, monospace; max-height: 420px; }
+pre.diff span { display: block; padding: 0 12px; white-space: pre; min-width: max-content; }
+pre.diff .a { background: var(--add-bg); } pre.diff .d { background: var(--del-bg); } pre.diff .h { color: var(--muted); }
+.act { display: flex; gap: 12px; padding: 8px 2px; border-bottom: 1px solid var(--line); font-size: 13.5px; }
+.act .t { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.act .when { color: var(--muted); font-size: 12.5px; flex: none; }
+.none { color: var(--muted); padding: 18px 2px; }
+
+/* Empty app */
+.welcome { margin: auto; text-align: center; max-width: 440px; padding: 24px; }
+.welcome h2 { font-size: 24px; font-weight: 650; letter-spacing: -.02em; margin: 0 0 8px; }
+.welcome p { color: var(--muted); margin: 0 0 22px; }
+.welcome .line { justify-content: center; }
+
+/* Sheets */
+.shade { position: fixed; inset: 0; background: var(--shade); display: grid; place-items: center; z-index: 10; animation: fade .15s ease; }
+.sheet { background: var(--bg); border: 1px solid var(--line); border-radius: 14px; width: min(440px, calc(100vw - 32px)); padding: 22px 22px 18px; box-shadow: 0 24px 60px rgba(0,0,0,.25); animation: rise .18s ease; }
+.sheet h3 { margin: 0 0 6px; font-size: 18px; font-weight: 650; letter-spacing: -.01em; }
+.sheet p { margin: 0 0 16px; color: var(--muted); font-size: 13.5px; }
+.sheet .stack { display: flex; flex-direction: column; gap: 10px; }
+.sheet .foot { display: flex; justify-content: flex-end; gap: 8px; margin-top: 18px; }
+.sheet .error { margin-top: 10px; }
+.chosen { font-size: 13px; padding: 9px 12px; border-radius: 8px; background: var(--field); word-break: break-all; }
+.chosen.empty { color: var(--muted); }
+.bigcode { font: 650 26px/1 ui-monospace, "Cascadia Mono", Consolas, monospace; letter-spacing: .08em; text-align: center; padding: 18px 0; border-radius: 10px; background: var(--field); cursor: pointer; }
+.setrow { padding: 12px 0; border-bottom: 1px solid var(--line); }
+.setrow .k { font-size: 12px; color: var(--muted); margin-bottom: 6px; }
+.chip { display: inline-flex; gap: 6px; align-items: center; font-size: 13px; margin: 8px 12px 0 0; }
+.menu { position: fixed; background: var(--bg); border: 1px solid var(--line); border-radius: 10px; padding: 5px; box-shadow: 0 12px 34px rgba(0,0,0,.18); z-index: 11; min-width: 200px; animation: fade .12s ease; }
+.menu button { display: block; width: 100%; text-align: left; padding: 7px 10px; border-radius: 6px; font-size: 13.5px; }
+.menu button:hover { background: var(--hover); }
+.menu button.danger { color: var(--bad); }
+.toast { position: fixed; bottom: 22px; left: 50%; transform: translateX(-50%); background: var(--btn); color: var(--btn-text); padding: 9px 16px; border-radius: 10px; font-size: 13.5px; z-index: 20; animation: fade .18s ease; max-width: 80vw; }
+@keyframes fade { from { opacity: 0; } }
+@keyframes rise { from { opacity: 0; transform: translateY(6px); } }
+@media (max-width: 720px) {
+  .app { grid-template-columns: 1fr; grid-template-rows: auto 1fr; }
+  aside { border-right: 0; border-bottom: 1px solid var(--line); max-height: 40vh; }
+  .head, .tabs, .body { padding-left: 16px; padding-right: 16px; }
+  .head-top { flex-direction: column; }
+  .code { margin-left: 0; }
+}
+</style>
+</head>
+<body>
+<div class="app">
+  <aside>
+    <div class="label">Folders</div>
+    <div class="nav" id="folders"></div>
+    <div class="links">
+      <button class="link" data-do="new">New shared folder</button>
+      <button class="link" data-do="join">Join with a code</button>
+    </div>
+    <div class="spacer"></div>
+    <div class="label">On this network</div>
+    <div class="nav" id="peers"></div>
+    <div class="me">
+      <span class="who" id="me"></span>
+      <button class="icon-btn" data-do="settings" title="Settings" aria-label="Settings">
+        <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
+      </button>
+    </div>
+  </aside>
+  <main id="main"></main>
+</div>
+<script>
+const $ = (s, el = document) => el.querySelector(s);
+const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const api = async (path, body) => {
+  const r = await fetch(path, body === undefined ? {} : { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-FS': '1' }, body: JSON.stringify(body) });
+  const j = await r.json().catch(() => ({}));
+  if (!r.ok) throw new Error(j.error || ('Error ' + r.status));
+  return j;
+};
+const ago = ms => {
+  const s = Math.max(0, (Date.now() - ms) / 1000);
+  if (s < 45) return 'just now';
+  if (s < 3600) return Math.round(s / 60) + ' min ago';
+  if (s < 86400) return Math.round(s / 3600) + ' h ago';
+  if (s < 86400 * 7) return Math.round(s / 86400) + ' d ago';
+  return new Date(ms).toLocaleDateString(undefined, { day: 'numeric', month: 'short', year: 'numeric' });
+};
+const size = b => b < 1024 ? b + ' B' : b < 1048576 ? (b / 1024).toFixed(1) + ' KB' : b < 1073741824 ? (b / 1048576).toFixed(1) + ' MB' : (b / 1073741824).toFixed(2) + ' GB';
+const names = a => a.length <= 1 ? (a[0] || '') : a.slice(0, -1).join(', ') + ' and ' + a[a.length - 1];
+const pathHtml = p => { const i = p.lastIndexOf('/'); return i < 0 ? esc(p) : `<span class="dir">${esc(p.slice(0, i + 1))}</span>${esc(p.slice(i + 1))}`; };
+const store = (k, v) => { try { v === undefined ? localStorage.getItem(k) : localStorage.setItem(k, v); } catch {} };
+const load = k => { try { return localStorage.getItem(k) || ''; } catch { return ''; } };
+
+let S = null, sel = load('sel'), tab = load('tab') || 'changes';
+let G = null, L = null, open = { commit: '', show: null, file: '', diff: '' };
+let lastSide = '', lastHead = '', lastBody = '';
+
+function toast(t) {
+  document.querySelectorAll('.toast').forEach(x => x.remove());
+  const el = document.createElement('div'); el.className = 'toast'; el.textContent = t;
+  document.body.appendChild(el); setTimeout(() => el.remove(), 2800);
+}
+function folder() { return S && S.folders.find(f => f.id === sel); }
+function statusOf(f) {
+  if (f.error) return { dot: 'bad', text: f.error };
+  if (f.pending > 0 || f.current) return { dot: 'busy', text: f.current ? 'Getting ' + f.current.split('/').pop() : `Getting ${f.pending} files` };
+  if (!f.peers.length) return { dot: '', text: 'No other laptop on this network right now' };
+  return f.synced ? { dot: 'ok', text: 'Up to date with ' + names(f.peers) } : { dot: 'busy', text: 'Catching up with ' + names(f.peers) };
+}
+
+function renderSide() {
+  const html = S.folders.map(f => {
+    const st = statusOf(f);
+    const sub = f.peers.length ? `With ${names(f.peers)}` : 'Only here';
+    return `<button class="row ${f.id === sel ? 'sel' : ''}" data-f="${f.id}"><span class="t"><div class="n">${esc(f.name)}</div><div class="s">${esc(sub)}</div></span><span class="dot ${st.dot}"></span></button>`;
+  }).join('') || '<div class="empty-note">None yet</div>';
+  const peers = S.peers.map(p => {
+    const s = p.shared.length ? 'Shares ' + names(p.shared) : (p.others ? 'Shares other folders' : 'Nothing shared');
+    return `<div class="row"><span class="t"><div class="n">${esc(p.name)}</div><div class="s">${esc(s)}</div></span></div>`;
+  }).join('') || '<div class="empty-note">No other laptops found</div>';
+  const key = html + peers + S.device.name;
+  if (key === lastSide) return;
+  lastSide = key;
+  $('#folders').innerHTML = html;
+  $('#peers').innerHTML = peers;
+  $('#me').textContent = S.device.name;
+}
+
+function renderMain() {
+  const main = $('#main');
+  const f = folder();
+  if (!f) {
+    if (lastHead === 'welcome') return;
+    lastHead = 'welcome'; lastBody = '';
+    main.innerHTML = `<div class="welcome"><h2>Keep a folder the same on every laptop</h2>
+      <p>Share a folder, then give its code to anyone on this network. Their changes arrive here as they save, and yours there.</p>
+      <div class="line"><button class="btn" data-do="new">Share a folder</button><button class="btn plain" data-do="join">Join with a code</button></div></div>`;
+    return;
+  }
+  const st = statusOf(f);
+  const n = G && G.repo ? G.changes.length : 0;
+  const head = `<div class="head"><div class="head-top"><div style="min-width:0"><h1>${esc(f.name)}</h1>
+      <button class="path" data-do="open" title="Open">${esc(f.path)}</button></div>
+      <div class="code"><span class="lbl">Code</span><button class="c" data-do="copy" title="Copy">${esc(f.code)}</button>
+      <button class="icon-btn" data-do="menu" aria-label="More"><svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><circle cx="5" cy="12" r="1.8"/><circle cx="12" cy="12" r="1.8"/><circle cx="19" cy="12" r="1.8"/></svg></button></div></div>
+      <div class="status"><span class="dot ${st.dot}"></span><span class="${st.dot === 'bad' ? 'err' : ''}">${esc(st.text)}</span><span>·</span><span>${f.files} file${f.files === 1 ? '' : 's'}, ${size(f.bytes)}</span></div></div>
+      <div class="tabs">${[['changes', 'Changes' + (n ? `<span class="count">${n}</span>` : '')], ['history', 'History'], ['activity', 'Activity']].map(([k, t]) => `<button class="tab ${tab === k ? 'on' : ''}" data-tab="${k}">${t}</button>`).join('')}</div>`;
+  if (head !== lastHead) {
+    const body = $('.body');
+    const scroll = body ? body.scrollTop : 0;
+    const keep = $('#bodyIn');
+    lastHead = head;
+    main.innerHTML = head + '<div class="body"><div class="narrow" id="bodyIn"></div></div>';
+    // Keep the open list (and what is typed in it) instead of drawing it again.
+    if (keep && lastBody) $('.body').replaceChild(keep, $('#bodyIn'));
+    $('.body').scrollTop = scroll;
+  }
+  renderBody();
+}
+
+function renderBody() {
+  const el = $('#bodyIn'); if (!el) return;
+  const f = folder(); if (!f) return;
+  const html = tab === 'activity' ? activityHtml(f) : tab === 'history' ? historyHtml() : changesHtml();
+  if (html === lastBody) return;
+  const msg = $('#msg') ? $('#msg').value : null;
+  const urlv = $('#url') ? $('#url').value : null;
+  const focus = document.activeElement && document.activeElement.id;
+  lastBody = html; el.innerHTML = html;
+  if (msg !== null && $('#msg')) $('#msg').value = msg;
+  if (urlv !== null && $('#url')) $('#url').value = urlv;
+  if (focus && $('#' + focus)) $('#' + focus).focus();
+}
+
+function activityHtml(f) {
+  if (!f.activity.length) return '<div class="none">Nothing has changed since Folder Sync started.</div>';
+  return f.activity.map(a => {
+    const who = a.mine ? 'You' : esc(a.who || 'Someone');
+    const p = `<span style="font-weight:500">${esc(a.path)}</span>`;
+    const t = a.kind === 'changed' ? `${who} changed ${p}`
+      : a.kind === 'deleted' ? `${who} deleted ${p}`
+      : a.kind === 'got' ? `${p} from ${who}`
+      : a.kind === 'conflict' ? `${p} was changed here and by ${who}; both copies kept`
+      : a.kind === 'followed' ? `Moved to the newest commit, ${esc(a.path)}`
+      : `${esc(a.kind)} ${p}`;
+    return `<div class="act"><span class="t">${t}</span><span class="when">${ago(a.at)}</span></div>`;
+  }).join('');
+}
+
+function changesHtml() {
+  if (!G) return '<div class="none">Loading…</div>';
+  if (G.no_git) return `<div class="none">Git is not installed on this laptop. <button class="textlink" data-url="https://git-scm.com/downloads">Get Git</button>, then open this again.</div>`;
+  if (!G.repo) {
+    const short = u => u.replace(/^https:\/\/github.com\//, '').replace(/\.git$/, '');
+    return `<h3 style="margin:0 0 4px;font-size:16px;font-weight:600">Connect a GitHub repository</h3>
+      <div class="small" style="margin-bottom:14px">The files here stay as they are and the repository's history comes in beside them. The other laptops connect to it by themselves.</div>
+      <div class="line"><input class="field" id="url" placeholder="owner/repo or https://github.com/owner/repo" value="${esc(G.suggest ? short(G.suggest) : '')}" spellcheck="false">
+      <button class="btn" data-do="connect" ${G.busy ? 'disabled' : ''}>${G.busy ? 'Connecting…' : 'Connect'}</button></div>
+      ${G.suggest ? `<div class="small" style="margin-top:8px">The others use ${esc(short(G.suggest))}.</div>` : ''}
+      ${G.error ? `<div class="error" style="margin-top:10px">${esc(G.error)}</div>` : ''}`;
+  }
+  const n = G.changes.length;
+  const right = [
+    G.behind ? `<button class="btn plain" data-do="pull" ${G.busy ? 'disabled' : ''}>Get ${G.behind} new commit${G.behind > 1 ? 's' : ''}</button>` : '',
+    G.ahead ? `<button class="btn plain" data-do="push" ${G.busy ? 'disabled' : ''}>Push ${G.ahead} commit${G.ahead > 1 ? 's' : ''}</button>` : '',
+  ].join('');
+  const repo = `<div class="repo">${G.repo_web ? `<button class="name" data-url="${esc(G.repo_web)}" title="Open on GitHub">${esc(G.repo_name)}</button>` : `<span class="name">${esc(G.repo_name || 'No remote')}</span>`}
+    ${G.branch ? `<span class="branch">${esc(G.branch)}</span>` : ''}<div class="right">${right}</div></div>`;
+  const id = G.identity;
+  const who = id.name && id.email
+    ? `<div class="small as">As ${esc(id.name)} &lt;${esc(id.email)}&gt; · <button class="textlink" data-do="identity">Change</button></div>`
+    : `<div class="small as">Commits need your name and email · <button class="textlink" data-do="identity">Set them</button></div>`;
+  const composer = `<div class="composer"><textarea class="field" id="msg" placeholder="${n ? 'What changed (optional)' : 'Nothing to commit'}" ${n ? '' : 'disabled'}></textarea>
+    <button class="btn" data-do="commit" ${n && !G.busy ? '' : 'disabled'}>${G.busy ? 'Working…' : (G.remote ? 'Commit and push' : 'Commit')}</button></div>${who}`;
+  const err = G.error ? `<div class="error" style="margin-top:10px">${esc(G.error)}</div>` : '';
+  const list = n ? `<div class="list">${G.changes.map(c => `<div class="item"><span class="kind ${c.kind}">${c.kind}</span><span class="p" title="${esc(c.path)}">${pathHtml(c.path)}</span><span class="by">${esc(c.by)}</span></div>`).join('')}</div>`
+    : `<div class="none">No changes since the last commit.</div>`;
+  return repo + composer + err + list;
+}
+
+function historyHtml() {
+  if (!G) return '<div class="none">Loading…</div>';
+  if (!G.repo) return '<div class="none">Connect a repository in Changes to see its history here.</div>';
+  if (!L) return '<div class="none">Loading…</div>';
+  if (!L.commits.length) return '<div class="none">No commits yet.</div>';
+  return L.commits.map(c => {
+    let detail = '';
+    if (open.commit === c.hash) {
+      const s = open.show;
+      detail = !s ? '<div class="detail small">Loading…</div>' : `<div class="detail">
+        ${s.message.trim() !== c.subject ? `<p class="msg">${esc(s.message.trim())}</p>` : ''}
+        ${s.files.map(fl => `<div class="file" data-file="${esc(fl.path)}"><span class="p">${pathHtml(fl.path)}</span><span class="num"><span class="a">+${esc(fl.added)}</span> <span class="d">−${esc(fl.removed)}</span></span></div>
+          ${open.file === fl.path ? diffHtml(open.diff) : ''}`).join('')}
+        ${L.repo_web ? `<div style="margin-top:8px;padding-left:8px"><button class="textlink small" data-url="${esc(L.repo_web)}/commit/${c.hash}">View on GitHub</button></div>` : ''}</div>`;
+    }
+    return `<div class="commit" data-c="${c.hash}"><div class="subj">${esc(c.subject)}${c.local ? '<span class="tag">Not pushed</span>' : ''}</div>
+      <div class="meta">${esc(c.author)} · ${ago(c.at)} · <span class="h">${c.hash.slice(0, 7)}</span></div></div>${detail}`;
+  }).join('');
+}
+
+function diffHtml(d) {
+  if (d === null) return '<div class="small" style="padding:4px 8px">Loading…</div>';
+  const lines = d.split('\n').filter(l => !/^(diff --git|index |--- |\+\+\+ |new file mode|deleted file mode|Binary files)/.test(l));
+  if (!lines.join('').trim()) return '<div class="small" style="padding:4px 8px">No text to show.</div>';
+  return `<pre class="diff">${lines.map(l => `<span class="${l[0] === '+' ? 'a' : l[0] === '-' ? 'd' : l.startsWith('@@') ? 'h' : ''}">${esc(l) || ' '}</span>`).join('')}</pre>`;
+}
+
+async function tick() {
+  try { S = await api('/api/state'); } catch { return; }
+  if (!folder() && S.folders.length) { sel = S.folders[0].id; G = null; L = null; }
+  renderSide(); renderMain();
+}
+async function gitTick() {
+  const f = folder(); if (!f) return;
+  try {
+    const g = await api('/api/git?f=' + f.id);
+    if (f.id !== sel) return;
+    const moved = !G || G.head !== g.head;
+    G = g;
+    if (tab === 'history' && (moved || !L)) loadLog();
+    renderMain();
+  } catch {}
+}
+async function loadLog() {
+  const f = folder(); if (!f) return;
+  try { const l = await api('/api/git/log?f=' + f.id); if (f.id === sel) { L = l; renderBody(); } } catch {}
+}
+function select(id) {
+  if (id === sel) return;
+  sel = id; store('sel', id);
+  G = null; L = null; open = { commit: '', show: null, file: '', diff: '' }; lastHead = ''; lastBody = ''; lastSide = '';
+  renderSide(); renderMain(); gitTick();
+}
+
+// Sheets
+function sheet(html, init) {
+  const sh = document.createElement('div'); sh.className = 'shade';
+  sh.innerHTML = `<div class="sheet">${html}</div>`;
+  sh.addEventListener('mousedown', e => { if (e.target === sh) sh.remove(); });
+  document.body.appendChild(sh);
+  const close = () => sh.remove();
+  sh.querySelectorAll('[data-close]').forEach(b => b.onclick = close);
+  init && init(sh, close);
+  const first = sh.querySelector('input'); if (first) first.focus();
+  return sh;
+}
+async function pick(title) {
+  try { const r = await api('/api/pick', { title }); return r.path || ''; } catch (e) { toast(e.message); return ''; }
+}
+function afterAdd(path) {
+  const f = S.folders.find(x => x.path.toLowerCase() === path.toLowerCase()) || S.folders[S.folders.length - 1];
+  if (f) select(f.id);
+}
+
+function newSheet() {
+  let path = '';
+  sheet(`<h3>Share a folder</h3><p>Everything in it is kept the same on each laptop that joins. What its .gitignore lists stays on each laptop.</p>
+    <div class="stack"><div class="chosen empty" id="ch">No folder chosen</div><button class="btn plain" id="pk">Choose folder…</button></div>
+    <div class="error" id="er"></div>
+    <div class="foot"><button class="btn plain" data-close>Cancel</button><button class="btn" id="go" disabled>Share</button></div>`, (sh, close) => {
+    $('#pk', sh).onclick = async () => {
+      const p = await pick('Choose a folder to share'); if (!p) return;
+      path = p; $('#ch', sh).textContent = p; $('#ch', sh).classList.remove('empty'); $('#go', sh).disabled = false;
+    };
+    $('#go', sh).onclick = async () => {
+      try {
+        const r = await api('/api/folders/new', { path });
+        close(); await tick(); afterAdd(path); codeSheet(r.message);
+      } catch (e) { $('#er', sh).textContent = e.message; }
+    };
+  });
+}
+function codeSheet(code) {
+  sheet(`<h3>Its code</h3><p>On each other laptop, open Folder Sync, choose Join with a code and type this.</p>
+    <div class="bigcode" id="bc" title="Copy">${esc(code)}</div>
+    <div class="foot"><button class="btn" data-close>Done</button></div>`, sh => {
+    $('#bc', sh).onclick = () => { navigator.clipboard.writeText(code); toast('Copied'); };
+  });
+}
+function joinSheet() {
+  let path = '';
+  sheet(`<h3>Join a folder</h3><p>Type the code from the laptop that shared it, then choose where to keep it on this one.</p>
+    <div class="stack"><input class="field" id="cd" placeholder="XXXX-XXXX-XXXX" maxlength="14" spellcheck="false" autocomplete="off" style="font-family:ui-monospace,Consolas,monospace;letter-spacing:.06em">
+    <div class="chosen empty" id="ch">No place chosen</div><button class="btn plain" id="pk">Choose where…</button></div>
+    <div class="error" id="er"></div>
+    <div class="foot"><button class="btn plain" data-close>Cancel</button><button class="btn" id="go" disabled>Join</button></div>`, (sh, close) => {
+    const valid = () => $('#cd', sh).value.replace(/[^0-9a-z]/gi, '').length === 12 && !!path;
+    $('#cd', sh).oninput = e => {
+      const v = e.target.value.toUpperCase().replace(/[^0-9A-Z]/g, '').slice(0, 12);
+      e.target.value = (v.match(/.{1,4}/g) || []).join('-');
+      $('#go', sh).disabled = !valid();
+    };
+    $('#pk', sh).onclick = async () => {
+      const p = await pick('Choose a folder for it (an empty one)'); if (!p) return;
+      path = p; $('#ch', sh).textContent = p; $('#ch', sh).classList.remove('empty'); $('#go', sh).disabled = !valid();
+    };
+    $('#go', sh).onclick = async () => {
+      try { await api('/api/folders/join', { code: $('#cd', sh).value, path }); close(); await tick(); afterAdd(path); }
+      catch (e) { $('#er', sh).textContent = e.message; }
+    };
+  });
+}
+function identitySheet() {
+  const id = (G && G.identity) || {};
+  sheet(`<h3>Name on your commits</h3><p>Use the email of your GitHub account, so GitHub shows the commits as yours.</p>
+    <div class="stack"><input class="field" id="nm" placeholder="Name" value="${esc(id.name || '')}"><input class="field" id="em" placeholder="Email" value="${esc(id.email || '')}"></div>
+    <div class="error" id="er"></div>
+    <div class="foot"><button class="btn plain" data-close>Cancel</button><button class="btn" id="go">Save</button></div>`, (sh, close) => {
+    $('#go', sh).onclick = async () => {
+      try { await api('/api/git/identity', { f: sel, name: $('#nm', sh).value, email: $('#em', sh).value }); close(); gitTick(); }
+      catch (e) { $('#er', sh).textContent = e.message; }
+    };
+  });
+}
+function settingsSheet() {
+  const manual = S.manual.map(m => `<span class="chip">${esc(m)} <button class="textlink" data-rm="${esc(m)}">Remove</button></span>`).join('');
+  sheet(`<h3>Settings</h3>
+    <div class="setrow"><div class="k">This laptop's name</div><div class="line"><input class="field" id="nm" value="${esc(S.device.name)}"><button class="btn plain" id="sv">Save</button></div></div>
+    <div class="setrow"><div class="k">Laptops added by address</div>
+      <div class="small" style="margin-bottom:8px">For networks that keep laptops from finding each other. This one is at ${esc(S.addresses.join(', ') || 'no address')}.</div>
+      <div class="line"><input class="field" id="ad" placeholder="192.168.1.20" spellcheck="false"><button class="btn plain" id="add">Add</button></div><div>${manual}</div></div>
+    <div class="small" style="padding-top:12px">Folder Sync ${esc(S.version)} keeps syncing after its window is closed; opening it again brings the window back.</div>
+    <div class="error" id="er"></div>
+    <div class="foot"><button class="btn plain" id="quit">Quit Folder Sync</button><button class="btn" data-close>Done</button></div>`, (sh, close) => {
+    $('#sv', sh).onclick = async () => { try { await api('/api/device', { name: $('#nm', sh).value }); toast('Saved'); tick(); } catch (e) { $('#er', sh).textContent = e.message; } };
+    $('#add', sh).onclick = async () => { try { await api('/api/peers/add', { addr: $('#ad', sh).value }); close(); toast('Added'); tick(); } catch (e) { $('#er', sh).textContent = e.message; } };
+    sh.querySelectorAll('[data-rm]').forEach(b => b.onclick = async () => { await api('/api/peers/remove', { addr: b.dataset.rm }); close(); tick(); });
+    $('#quit', sh).onclick = async () => {
+      await api('/api/quit', {});
+      document.body.innerHTML = '<div class="welcome" style="margin-top:30vh"><h2>Folder Sync has quit</h2><p>Open it again to sync.</p></div>';
+      window.close();
+    };
+  });
+}
+function menu(anchor) {
+  document.querySelectorAll('.menu').forEach(m => m.remove());
+  const f = folder(); if (!f) return;
+  const m = document.createElement('div'); m.className = 'menu';
+  m.innerHTML = `<button data-m="open">Open folder</button><button data-m="copy">Copy code</button><button data-m="stop" class="danger">Stop syncing this folder</button>`;
+  const r = anchor.getBoundingClientRect();
+  m.style.top = (r.bottom + 6) + 'px'; m.style.right = Math.max(8, innerWidth - r.right) + 'px';
+  document.body.appendChild(m);
+  const off = e => { if (!m.contains(e.target)) { m.remove(); document.removeEventListener('mousedown', off); } };
+  setTimeout(() => document.addEventListener('mousedown', off));
+  m.onclick = e => {
+    const k = e.target.dataset.m; if (!k) return; m.remove();
+    if (k === 'open') api('/api/open', { f: f.id });
+    if (k === 'copy') { navigator.clipboard.writeText(f.code); toast('Copied'); }
+    if (k === 'stop') sheet(`<h3>Stop syncing ${esc(f.name)}?</h3><p>The files stay on this laptop. Changes stop going to and coming from the others.</p>
+      <div class="foot"><button class="btn plain" data-close>Cancel</button><button class="btn" id="go">Stop syncing</button></div>`, (sh, close) => {
+        $('#go', sh).onclick = async () => { await api('/api/folders/remove', { id: f.id }); close(); sel = ''; lastHead = ''; lastBody = ''; tick(); };
+      });
+  };
+}
+
+async function run(what, label) {
+  if (G) { G.busy = true; renderMain(); }
+  try { const r = await what(); toast(r.message || label); return true; }
+  catch (e) { toast(e.message); return false; }
+  finally { await gitTick(); if (tab === 'history') loadLog(); }
+}
+
+document.addEventListener('click', async e => {
+  const t = e.target.closest('[data-f],[data-tab],[data-do],[data-url],[data-c],[data-file]');
+  if (!t) return;
+  if (t.dataset.f) return select(t.dataset.f);
+  if (t.dataset.tab) {
+    tab = t.dataset.tab; store('tab', tab); lastHead = ''; lastBody = '';
+    if (tab === 'history') loadLog();
+    return renderMain();
+  }
+  if (t.dataset.url) return api('/api/open-url', { url: t.dataset.url });
+  if (t.dataset.file !== undefined) {
+    if (open.file === t.dataset.file) { open.file = ''; return renderBody(); }
+    open.file = t.dataset.file; open.diff = null; renderBody();
+    try { open.diff = (await api(`/api/git/diff?f=${sel}&c=${open.commit}&path=${encodeURIComponent(open.file)}`)).diff; } catch { open.diff = ''; }
+    return renderBody();
+  }
+  if (t.dataset.c) {
+    if (open.commit === t.dataset.c) { open = { commit: '', show: null, file: '', diff: '' }; return renderBody(); }
+    open = { commit: t.dataset.c, show: null, file: '', diff: '' }; renderBody();
+    try { open.show = await api(`/api/git/show?f=${sel}&c=${t.dataset.c}`); } catch { open.show = { message: '', files: [] }; }
+    return renderBody();
+  }
+  const f = folder();
+  switch (t.dataset.do) {
+    case 'new': return newSheet();
+    case 'join': return joinSheet();
+    case 'settings': return S && settingsSheet();
+    case 'open': return api('/api/open', { f: f.id });
+    case 'copy': navigator.clipboard.writeText(f.code); return toast('Copied');
+    case 'menu': return menu(t);
+    case 'identity': return identitySheet();
+    case 'connect': return run(() => api('/api/git/connect', { f: f.id, url: $('#url').value }), 'Connected');
+    case 'commit': {
+      const msg = $('#msg').value;
+      if (await run(() => api('/api/git/commit', { f: f.id, message: msg }), 'Committed') && $('#msg')) $('#msg').value = '';
+      return;
+    }
+    case 'pull': return run(() => api('/api/git/pull', { f: f.id }), 'Up to date');
+    case 'push': return run(() => api('/api/git/push', { f: f.id }), 'Pushed');
+  }
+});
+document.addEventListener('keydown', e => {
+  if (e.key === 'Escape') document.querySelectorAll('.shade,.menu').forEach(x => x.remove());
+  if (e.key === 'Enter' && (e.ctrlKey || e.metaKey) && e.target.id === 'msg') { const b = $('[data-do="commit"]'); if (b && !b.disabled) b.click(); }
+});
+
+tick().then(gitTick);
+setInterval(tick, 1000);
+setInterval(() => { if (tab !== 'activity') gitTick(); }, 2500);
+setInterval(() => { if (tab === 'activity') { lastBody = ''; renderBody(); } }, 30000);
+</script>
+</body>
+</html>

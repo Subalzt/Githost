@@ -1,0 +1,25 @@
+[package]
+name = "folder-sync"
+version = "0.1.0"
+edition = "2021"
+description = "Keeps folders the same on every laptop on the Wi-Fi, with a GitHub repository behind them"
+publish = false
+
+[[bin]]
+name = "folder-sync"
+path = "src/main.rs"
+
+[dependencies]
+serde_json = "1"
+sha2 = "0.10"
+hmac = "0.12"
+getrandom = "0.2"
+sysinfo = { version = "0.32", default-features = false, features = ["network"] }
+open = "5"
+
+[profile.release]
+opt-level = 3
+lto = true
+codegen-units = 1
+strip = true
+panic = "abort"
