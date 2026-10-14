@@ -1,49 +1,127 @@
 //! Folder Sync: folders kept the same on every laptop on the Wi-Fi, laptop to laptop with nothing
 //! in between, and a GitHub repository behind each one that anyone commits to with one button.
 #![cfg_attr(all(windows, not(debug_assertions)), windows_subsystem = "windows")]
-
 mod api;
-mod config;
 mod git;
-mod http;
-mod ignore;
-mod index;
-mod peers;
-mod scan;
-mod state;
+mod net;
+mod store;
 mod sync;
-mod util;
-mod window;
 
-use std::net::{SocketAddr, TcpListener};
+use std::fs::{self, File};
+use std::io::{self, Read, Write};
 use std::path::{Path, PathBuf};
-use std::time::Duration;
+use std::process::Command;
+use std::sync::Mutex;
+use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
-use state::app;
+use hmac::Mac;
+use sha2::{Digest, Sha256};
 
-pub const DEFAULT_PORT: u16 = 47800;
-const DISC_PORT: u16 = 47801;
+pub const PORT: u16 = 47800;
+
+pub fn now_ms() -> u64 {
+    SystemTime::now().duration_since(UNIX_EPOCH).unwrap_or_default().as_millis() as u64
+}
+
+pub fn hex(b: &[u8]) -> String {
+    b.iter().map(|x| format!("{:02x}", x)).collect()
+}
+
+pub fn random(n: usize) -> Vec<u8> {
+    let mut v = vec![0u8; n];
+    getrandom::getrandom(&mut v).expect("no randomness");
+    v
+}
+
+pub fn sha(s: &str) -> Vec<u8> {
+    Sha256::digest(s.as_bytes()).to_vec()
+}
+
+pub fn hmac(key: &[u8], msg: &str) -> String {
+    let mut m = hmac::Hmac::<Sha256>::new_from_slice(key).unwrap();
+    m.update(msg.as_bytes());
+    hex(&m.finalize().into_bytes())
+}
+
+pub fn mtime(md: &fs::Metadata) -> i64 {
+    md.modified().ok().and_then(|t| t.duration_since(UNIX_EPOCH).ok()).map_or(0, |d| d.as_millis() as i64)
+}
+
+/// Reads `r` (up to `len` bytes), writing it to `w` when given, and returns the SHA-256 of it.
+pub fn hash_copy(r: &mut dyn Read, mut w: Option<&mut File>, len: Option<u64>) -> io::Result<String> {
+    let (mut h, mut buf, mut left) = (Sha256::new(), vec![0u8; 1 << 20], len.unwrap_or(u64::MAX));
+    while left > 0 {
+        let n = r.read(&mut buf[..left.min(1 << 20) as usize])?;
+        if n == 0 {
+            break;
+        }
+        h.update(&buf[..n]);
+        if let Some(w) = w.as_mut() {
+            w.write_all(&buf[..n])?;
+        }
+        left -= n as u64;
+    }
+    if len.is_some() && left > 0 {
+        return Err(io::Error::new(io::ErrorKind::UnexpectedEof, "cut off"));
+    }
+    Ok(hex(&h.finalize()))
+}
+
+pub fn hash_file(p: &Path) -> io::Result<String> {
+    hash_copy(&mut File::open(p)?, None, None)
+}
 
 /// A path inside the folder, from the / form used everywhere else.
 pub fn folder_path(root: &Path, rel: &str) -> PathBuf {
-    let mut p = root.to_path_buf();
-    for part in rel.split('/') {
-        p.push(part);
+    rel.split('/').fold(root.to_path_buf(), |p, s| p.join(s))
+}
+
+pub fn url_decode(s: &str) -> String {
+    let (b, mut out, mut i) = (s.as_bytes(), Vec::new(), 0);
+    while i < b.len() {
+        let byte = (b[i] == b'%' && i + 2 < b.len()).then(|| u8::from_str_radix(std::str::from_utf8(&b[i + 1..i + 3]).ok()?, 16).ok());
+        match byte.flatten() {
+            Some(v) => (out.push(v), i += 3),
+            None => (out.push(if b[i] == b'+' { b' ' } else { b[i] }), i += 1),
+        };
     }
-    p
+    String::from_utf8_lossy(&out).into_owned()
+}
+
+pub fn url_encode(s: &str) -> String {
+    s.bytes().map(|c| if c.is_ascii_alphanumeric() || b"-_.~/".contains(&c) { (c as char).to_string() } else { format!("%{:02X}", c) }).collect()
+}
+
+/// A command that never flashes a console window on Windows.
+pub fn quiet(program: &str) -> Command {
+    #[allow(unused_mut)]
+    let mut c = Command::new(program);
+    #[cfg(windows)]
+    std::os::windows::process::CommandExt::creation_flags(&mut c, 0x0800_0000);
+    c
+}
+
+static LOG: Mutex<Option<File>> = Mutex::new(None);
+
+pub fn log_line(s: &str) {
+    let line = format!("{} {}\n", now_ms(), s);
+    eprint!("{}", line);
+    if let Some(f) = LOG.lock().unwrap().as_mut() {
+        let _ = f.write_all(line.as_bytes());
+    }
+}
+
+#[macro_export]
+macro_rules! log {
+    ($($t:tt)*) => { $crate::log_line(&format!($($t)*)) };
 }
 
 fn data_dir() -> PathBuf {
-    #[cfg(windows)]
     if let Ok(a) = std::env::var("APPDATA") {
         return PathBuf::from(a).join("FolderSync");
     }
     let home = PathBuf::from(std::env::var("HOME").unwrap_or_else(|_| ".".into()));
-    if cfg!(target_os = "macos") {
-        home.join("Library/Application Support/FolderSync")
-    } else {
-        home.join(".config/foldersync")
-    }
+    home.join(if cfg!(target_os = "macos") { "Library/Application Support/FolderSync" } else { ".config/foldersync" })
 }
 
 fn main() {
@@ -51,42 +129,35 @@ fn main() {
     let args: Vec<String> = std::env::args().collect();
     let arg = |name: &str| args.iter().position(|a| a == name).and_then(|i| args.get(i + 1)).cloned();
     let data = arg("--data").map(PathBuf::from).unwrap_or_else(data_dir);
-    let port: u16 = arg("--port").and_then(|p| p.parse().ok()).unwrap_or(DEFAULT_PORT);
-    let disc: u16 = arg("--disc").and_then(|p| p.parse().ok()).unwrap_or(DISC_PORT);
-    let disc_send: Vec<u16> =
-        arg("--disc-send").map(|s| s.split(',').filter_map(|x| x.parse().ok()).collect()).unwrap_or_else(|| vec![disc]);
-    let no_window = args.iter().any(|a| a == "--no-window");
+    let port = arg("--port").and_then(|p| p.parse().ok()).unwrap_or(PORT);
+    let disc = arg("--disc").and_then(|p| p.parse().ok()).unwrap_or(PORT + 1);
+    let disc_send = arg("--disc-send").map(|s| s.split(',').filter_map(|x| x.parse().ok()).collect()).unwrap_or(vec![disc]);
+    let window = !args.iter().any(|a| a == "--no-window");
+    let _ = fs::create_dir_all(&data);
+    *LOG.lock().unwrap() = fs::OpenOptions::new().create(true).append(true).open(data.join("log.txt")).ok();
 
-    let _ = std::fs::create_dir_all(&data);
-    util::open_log(&data.join("log.txt"));
-
-    let listener = match TcpListener::bind(("0.0.0.0", port)) {
-        Ok(l) => l,
-        Err(_) => {
-            // Already running: show its window.
-            let addr = SocketAddr::from(([127, 0, 0, 1], port));
-            let running = http::request("GET", addr, "/api/ping", &[], b"", Duration::from_secs(2))
-                .and_then(|r| r.json())
-                .map(|v| v.get("app").and_then(|x| x.as_str()) == Some(peers::APP_TAG))
-                .unwrap_or(false);
-            if running && !no_window {
-                state::init(data, port, disc, disc_send);
-                window::open_window(port);
-            } else if !running {
-                log!("port {} is taken by another program", port);
+    let Ok(listener) = std::net::TcpListener::bind(("0.0.0.0", port)) else {
+        // Already running: show its window.
+        let ping = net::request("GET", ([127, 0, 0, 1], port).into(), "/api/ping", &[], Duration::from_secs(2)).and_then(|r| r.json());
+        if ping.map(|v| v["app"] == net::APP_TAG).unwrap_or(false) {
+            if window {
+                store::init(data, port, disc, disc_send);
+                api::open_window(port);
             }
-            return;
+        } else {
+            log!("port {} is taken by another program", port);
         }
+        return;
     };
-    state::init(data, port, disc, disc_send);
-    log!("Folder Sync {} as {} on port {}", env!("CARGO_PKG_VERSION"), app().cfg().device_name, port);
-    let folders = app().cfg().folders.clone();
-    for fc in &folders {
-        app().open_folder(fc);
+    store::init(data, port, disc, disc_send);
+    let a = store::app();
+    log!("Folder Sync {} as {} on port {}", env!("CARGO_PKG_VERSION"), a.cfg().device_name, port);
+    for fc in a.cfg().folders.clone() {
+        a.open_folder(&fc);
     }
-    peers::start();
-    if !no_window {
-        window::open_window(port);
+    net::start();
+    if window {
+        api::open_window(port);
     }
-    http::serve(listener, api::handle);
+    net::serve(listener, api::handle);
 }
