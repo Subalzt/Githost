@@ -176,12 +176,12 @@ pub fn sign(f: &Folder, target: &str) -> Vec<(&'static str, String)> {
     vec![("X-FS-Device", me), ("X-FS-Time", t), ("X-FS-Auth", mac)]
 }
 
-/// Whether a request was signed by a laptop that knows this folder's code.
+/// Whether a request was signed by a laptop that has this folder's key.
 pub fn verify(f: &Folder, req: &Req) -> bool {
     let (dev, t, mac) = (req.header("X-FS-Device"), req.header("X-FS-Time"), req.header("X-FS-Auth"));
     let fresh = t.parse::<u64>().is_ok_and(|ts| (now_ms() / 1000).abs_diff(ts) < 300);
     let want = hmac(&f.key, &format!("fs1|{}|{}|{}", dev, t, req.target));
-    fresh && mac.len() == want.len() && mac.bytes().zip(want.bytes()).fold(0, |a, (x, y)| a | (x ^ y)) == 0
+    fresh && crate::same(mac, &want)
 }
 
 fn pull(f: &Folder, p: &Peer) -> Result<(), String> {

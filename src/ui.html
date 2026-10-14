@@ -90,7 +90,7 @@ pre .a { background: var(--add); } pre .d { background: var(--del); } pre .h { c
 .foot { display: flex; justify-content: flex-end; gap: 8px; margin-top: 18px; }
 .chosen { font-size: 13px; padding: 9px 12px; border-radius: 8px; background: var(--field); word-break: break-all; }
 .chosen:empty::before { content: "Nothing chosen"; color: var(--muted); }
-.big { font-size: 26px; font-weight: 650; letter-spacing: .08em; text-align: center; padding: 18px 0; border-radius: 10px; background: var(--field); cursor: pointer; }
+.big { font-size: 40px; font-weight: 650; letter-spacing: .12em; text-align: center; padding: 18px 0; border-radius: 10px; background: var(--field); }
 .setrow { padding: 12px 0; border-bottom: 1px solid var(--line); }
 .menu { position: fixed; background: var(--bg); border: 1px solid var(--line); border-radius: 10px; padding: 5px; box-shadow: 0 12px 34px rgba(0,0,0,.18); z-index: 11; min-width: 200px; }
 .menu button { display: block; width: 100%; text-align: left; padding: 7px 10px; border-radius: 6px; font-size: 13.5px; }
@@ -148,13 +148,13 @@ function render() {
   if (side !== lastSide) { lastSide = side; [$('#folders').innerHTML, $('#peers').innerHTML] = side.split('\0'); $('#me').textContent = S.device.name; }
   const f = folder();
   if (!f) {
-    if (lastHead !== 'welcome') $('#main').innerHTML = `<div class="welcome"><h2>Keep a folder the same on every laptop</h2><p>Share a folder, then give its code to anyone on this network. Their changes arrive here as they save, and yours there.</p>
+    if (lastHead !== 'welcome') $('#main').innerHTML = `<div class="welcome"><h2>Keep a folder the same on every laptop</h2><p>Share a folder, then invite anyone on this network with a 4-digit code. Their changes arrive here as they save, and yours there.</p>
       <div class="line"><button class="btn" data-do="new">Share a folder</button><button class="btn plain" data-do="join">Join with a code</button></div></div>`;
     return lastHead = 'welcome';
   }
   const [dot, text] = statusOf(f), n = G?.repo ? G.changes.length : 0;
   const head = `<div class="head"><div class="top"><div class="t"><h1>${esc(f.name)}</h1><button class="path" data-do="open">${esc(f.path)}</button></div>
-    <div class="code">Code<button class="c mono" data-do="copy" title="Copy">${esc(f.code)}</button><button class="icon" data-do="menu"><svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><circle cx="5" cy="12" r="1.8"/><circle cx="12" cy="12" r="1.8"/><circle cx="19" cy="12" r="1.8"/></svg></button></div></div>
+    <div class="code">${f.invite ? `Code<button class="c mono" data-do="invite">${esc(f.invite.code)}</button>` : '<button class="btn plain" data-do="invite">Invite</button>'}<button class="icon" data-do="menu"><svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><circle cx="5" cy="12" r="1.8"/><circle cx="12" cy="12" r="1.8"/><circle cx="19" cy="12" r="1.8"/></svg></button></div></div>
     <div class="status"><span class="dot ${dot}"></span><span class="${dot === 'bad' ? 'err' : ''}">${esc(text)}</span>·<span>${plural(f.files, 'file')}, ${size(f.bytes)}</span></div></div>
     <div class="tabs">${[['changes', 'Changes' + (n ? `<small>${n}</small>` : '')], ['history', 'History'], ['activity', 'Activity']].map(([k, t]) => `<button class="tab ${tab === k ? 'on' : ''}" data-tab="${k}">${t}</button>`).join('')}</div>`;
   if (head !== lastHead) {
@@ -248,12 +248,12 @@ const foot = go => `<div class="foot"><button class="btn plain" data-close>Cance
 
 function addSheet(join) {
   let path = '';
-  sheet(join ? `<h3>Join a folder</h3><p>Type the code from the laptop that shared it, then choose where to keep it on this one.</p>
-      <div class="stack"><input class="field mono" id="cd" placeholder="XXXX-XXXX-XXXX" maxlength="14" spellcheck="false" autocomplete="off"><div class="chosen" id="ch"></div><button class="btn plain" id="pk">Choose where…</button></div>${foot('Join')}`
+  sheet(join ? `<h3>Join a folder</h3><p>Type the code the other laptop shows under Invite, then choose where to keep the folder on this one.</p>
+      <div class="stack"><input class="field mono" id="cd" placeholder="4 digits" maxlength="4" inputmode="numeric" autocomplete="off"><div class="chosen" id="ch"></div><button class="btn plain" id="pk">Choose where…</button></div>${foot('Join')}`
     : `<h3>Share a folder</h3><p>Everything in it is kept the same on each laptop that joins. What its .gitignore lists stays on each laptop.</p>
       <div class="stack"><div class="chosen" id="ch"></div><button class="btn plain" id="pk">Choose folder…</button></div>${foot('Share')}`, (sh, close, fail) => {
-    const code = () => $('#cd', sh)?.value.replace(/-/g, '') || '', check = () => $('#go', sh).disabled = !path || (join && code().length !== 12);
-    if (join) $('#cd', sh).oninput = e => { e.target.value = (e.target.value.toUpperCase().replace(/[^0-9A-Z]/g, '').slice(0, 12).match(/.{1,4}/g) || []).join('-'); check(); };
+    const code = () => $('#cd', sh)?.value || '', check = () => $('#go', sh).disabled = !path || (join && code().length !== 4);
+    if (join) $('#cd', sh).oninput = e => { e.target.value = e.target.value.replace(/\D/g, '').slice(0, 4); check(); };
     $('#pk', sh).onclick = async () => {
       try { path = (await api('/api/pick', { title: join ? 'Choose a folder for it (an empty one)' : 'Choose a folder to share' })).path || path; } catch (e) { fail(e); }
       $('#ch', sh).textContent = path; check();
@@ -262,12 +262,18 @@ function addSheet(join) {
       try {
         const r = await api(join ? '/api/folders/join' : '/api/folders/new', { path, code: code() });
         close(); S = await api('/api/state');
-        select((S.folders.find(x => x.path.toLowerCase() === path.toLowerCase()) || S.folders.at(-1)).id);
-        if (!join) sheet(`<h3>Its code</h3><p>On each other laptop, open Folder Sync, choose Join with a code and type this.</p><div class="big mono" id="bc" title="Copy">${esc(r.message)}</div>
-          <div class="foot"><button class="btn" data-close>Done</button></div>`, sh => $('#bc', sh).onclick = () => { navigator.clipboard.writeText(r.message); toast('Copied'); });
+        select((S.folders.find(x => x.id === r.message || x.path.toLowerCase() === path.toLowerCase()) || S.folders.at(-1)).id);
+        join ? toast(r.message) : inviteSheet(folder());
       } catch (e) { fail(e); }
     };
   });
+}
+async function inviteSheet(f) {
+  try {
+    const inv = f.invite || await api('/api/invite', { f: f.id });
+    sheet(`<h3>Invite to ${esc(f.name)}</h3><p>On each other laptop, choose Join with a code and type this. It works for 10 minutes, for everyone you give it to.</p>
+      <div class="big mono">${esc(inv.code)}</div><div class="foot"><button class="btn" data-close>Done</button></div>`);
+  } catch (e) { toast(e.message); }
 }
 function settingsSheet() {
   sheet(`<h3>Settings</h3>
@@ -286,7 +292,7 @@ function settingsSheet() {
 }
 function menu(anchor) {
   const f = folder(), r = anchor.getBoundingClientRect();
-  document.body.insertAdjacentHTML('beforeend', `<div class="menu" style="top:${r.bottom + 6}px;right:${Math.max(8, innerWidth - r.right)}px"><button data-do="open">Open folder</button><button data-do="copy">Copy code</button><button data-m class="err">Stop syncing this folder</button></div>`);
+  document.body.insertAdjacentHTML('beforeend', `<div class="menu" style="top:${r.bottom + 6}px;right:${Math.max(8, innerWidth - r.right)}px"><button data-do="open">Open folder</button><button data-m class="err">Stop syncing this folder</button></div>`);
   const m = document.body.lastElementChild;
   setTimeout(() => document.addEventListener('click', () => m.remove(), { once: true }));
   $('[data-m]', m).onclick = () => sheet(`<h3>Stop syncing ${esc(f.name)}?</h3><p>The files stay on this laptop. Changes stop going to and coming from the others.</p>${foot('Stop syncing')}`, (sh, close) => {
@@ -319,7 +325,7 @@ document.addEventListener('click', async e => {
   const f = folder();
   ({
     new: () => addSheet(false), join: () => addSheet(true), settings: () => S && settingsSheet(), menu: () => menu(t),
-    open: () => api('/api/open', { f: f.id }), copy: () => { navigator.clipboard.writeText(f.code); toast('Copied'); },
+    open: () => api('/api/open', { f: f.id }), invite: () => inviteSheet(f),
     identity: () => sheet(`<h3>Name on your commits</h3><p>Use the email of your GitHub account, so GitHub shows the commits as yours.</p>
       <div class="stack"><input class="field" id="nm" placeholder="Name" value="${esc(G.identity.name)}"><input class="field" id="em" placeholder="Email" value="${esc(G.identity.email)}"></div>${foot('Save')}`,
       (sh, close, fail) => $('#go', sh).onclick = () => api('/api/git/identity', { f: sel, name: $('#nm', sh).value, email: $('#em', sh).value }).then(() => { close(); gitTick(); }, fail)),

@@ -7,8 +7,8 @@ use std::process::Stdio;
 use serde_json::{json, Value};
 
 use crate::net::{self, Req, Resp, APP_TAG};
-use crate::store::{app, new_code, normalize_code, pretty_code, safe_path, Folder, FolderCfg};
-use crate::{folder_path, git, log, mtime, now_ms, quiet, sync};
+use crate::store::{app, safe_path, Folder, FolderCfg};
+use crate::{folder_path, git, log, mtime, now_ms, pair, quiet, sync};
 
 pub fn handle(req: &Req) -> Resp {
     if let Some(rest) = req.path.strip_prefix("/p/") {
@@ -29,16 +29,11 @@ pub fn handle(req: &Req) -> Resp {
         ("GET", "/") => return Resp::Page(include_str!("ui.html")),
         ("GET", "/api/ping") => return Resp::Json(200, json!({"app": APP_TAG})),
         ("GET", "/api/state") => return Resp::Json(200, state()),
-        ("POST", "/api/folders/new") => return done(add_folder(&s("path"), new_code())),
-        ("POST", "/api/folders/join") => {
-            return match normalize_code(&s("code")) {
-                Some(code) => done(add_folder(&s("path"), code).map(|_| "Joined".into())),
-                None => Resp::err(400, "A code is 12 letters and digits, like 7KQ2-MX9P-4TRD"),
-            }
-        }
+        ("POST", "/api/folders/new") => return done(add_folder(FolderCfg::new(&s("path")))),
+        ("POST", "/api/folders/join") => return done(pair::join(&s("code"), &s("path"))),
         ("POST", "/api/folders/remove") => {
             let mut cfg = c();
-            cfg.folders.retain(|f| crate::store::folder_id(&f.code) != s("id"));
+            cfg.folders.retain(|f| f.id != s("id"));
             app().save(&cfg);
             drop(cfg);
             app().close_folder(&s("id"));
@@ -85,6 +80,7 @@ pub fn handle(req: &Req) -> Resp {
     };
     match req.path.as_str() {
         "/api/open" => drop(open::that_detached(&f.root)),
+        "/api/invite" => return Resp::Json(200, pair::invite(&f.id)),
         "/api/git" => return Resp::Json(200, git::status(&f)),
         "/api/git/log" => return Resp::Json(200, git::log(&f)),
         "/api/git/show" => return Resp::Json(200, git::show(&f, req.q("c"))),
@@ -100,17 +96,18 @@ pub fn handle(req: &Req) -> Resp {
     ok()
 }
 
-fn add_folder(path: &str, code: String) -> Result<String, String> {
-    let p = PathBuf::from(path.trim());
+/// Starts sharing a folder here, new or joined; gives its id.
+pub fn add_folder(mut fc: FolderCfg) -> Result<String, String> {
+    let p = PathBuf::from(fc.path.trim());
     if !p.is_absolute() {
         return Err("Choose a folder".into());
     }
     std::fs::create_dir_all(&p).map_err(|e| format!("Cannot use that folder: {}", e))?;
     // Windows writes canonical paths as \\?\C:\...; keep them as people write them.
     let p = p.canonicalize().map_or(p, |c| PathBuf::from(c.display().to_string().trim_start_matches(r"\\?\")));
-    let fc = FolderCfg { code: code.clone(), path: p.display().to_string() };
+    fc.path = p.display().to_string();
     let mut c = app().cfg();
-    if c.folders.iter().any(|f| f.code == code) {
+    if c.folders.iter().any(|f| f.id == fc.id) {
         return Err("This laptop already has that folder".into());
     }
     if let Some(other) = c.folders.iter().map(|f| Path::new(&f.path)).find(|o| p.starts_with(o) || o.starts_with(&p)) {
@@ -120,7 +117,7 @@ fn add_folder(path: &str, code: String) -> Result<String, String> {
     app().save(&c);
     drop(c);
     app().open_folder(&fc);
-    Ok(pretty_code(&code))
+    Ok(fc.id)
 }
 
 fn folder_json(f: &Folder) -> Value {
@@ -130,9 +127,10 @@ fn folder_json(f: &Folder) -> Value {
     let me = a.me();
     let activity: Vec<Value> = f.act.lock().unwrap().iter().take(60).map(|x| json!({"at": x.at, "kind": x.kind, "path": x.path, "who": a.name_of(&x.who), "mine": x.who == me})).collect();
     let st = f.st.lock().unwrap();
+    let invite = pair::open_invite(&a.pairing.lock().unwrap()).filter(|i| i.folder == f.id).map(|i| json!({"code": i.code, "until": i.until}));
     let synced = st.pending == 0 && peers.iter().all(|p| st.synced_with.get(&p.id).is_some_and(|t| now_ms() - t < 8000));
     json!({
-        "id": f.id, "name": f.name(), "path": f.root.display().to_string(), "code": pretty_code(&f.code), "files": files, "bytes": bytes,
+        "id": f.id, "name": f.name(), "path": f.root.display().to_string(), "invite": invite, "files": files, "bytes": bytes,
         "pending": st.pending, "current": st.current, "error": st.error, "synced": synced, "peers": peers.iter().map(|p| &p.name).collect::<Vec<_>>(),
         "git": {"repo": g.repo, "branch": g.branch}, "activity": activity,
     })
@@ -162,8 +160,14 @@ fn state() -> Value {
 }
 
 fn peer(req: &Req, rest: &str) -> Resp {
-    if rest == "hello" {
-        return Resp::Json(200, net::hello(false));
+    let r = match rest {
+        "hello" => return Resp::Json(200, net::hello(false)),
+        "pair/start" => pair::start(req.q("x")),
+        "pair/finish" => pair::finish(req.q("sid"), req.q("confirm")),
+        _ => Err(String::new()),
+    };
+    if rest.starts_with("pair/") {
+        return r.map_or_else(|e| Resp::err(403, e), |v| Resp::Json(200, v));
     }
     let Some((f, what)) = rest.split_once('/').and_then(|(id, what)| Some((app().folder(id)?, what))) else { return Resp::err(404, "no such folder") };
     if !sync::verify(&f, req) {

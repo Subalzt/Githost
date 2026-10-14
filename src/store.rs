@@ -22,31 +22,22 @@ pub fn write_json(p: &Path, v: &impl Serialize) -> bool {
     fs::write(&tmp, serde_json::to_vec(v).unwrap()).is_ok() && fs::rename(&tmp, p).is_ok()
 }
 
-/// A folder is known by its code: its id and the key its requests are signed with both come from it.
-/// Letters and digits that cannot be mistaken for one another (no 0/O, 1/I).
-const ALPHABET: &[u8] = b"23456789ABCDEFGHJKLMNPQRSTUVWXYZ";
-
-pub fn new_code() -> String {
-    random(12).iter().map(|b| ALPHABET[(*b % 32) as usize] as char).collect()
-}
-
-pub fn normalize_code(s: &str) -> Option<String> {
-    let c: String = s.chars().filter(char::is_ascii_alphanumeric).map(|c| c.to_ascii_uppercase()).collect();
-    (c.len() == 12 && c.bytes().all(|b| ALPHABET.contains(&b))).then_some(c)
-}
-
-pub fn pretty_code(c: &str) -> String {
-    c.as_bytes().chunks(4).map(|ch| String::from_utf8_lossy(ch)).collect::<Vec<_>>().join("-")
-}
-
-pub fn folder_id(code: &str) -> String {
-    hex(&sha(&format!("foldersync id {}", code)))[..24].to_string()
-}
-
-#[derive(Serialize, Deserialize, Clone)]
+/// A folder: a random id, the random key its requests are signed with, and where it is here.
+#[derive(Serialize, Deserialize, Clone, Default)]
+#[serde(default)]
 pub struct FolderCfg {
-    pub code: String,
+    pub id: String,
+    pub key: String,
     pub path: String,
+    /// Folders shared before 0.3 had a 12-letter code that both came from; read once, then dropped.
+    #[serde(skip_serializing)]
+    pub code: String,
+}
+
+impl FolderCfg {
+    pub fn new(path: &str) -> FolderCfg {
+        FolderCfg { id: hex(&random(12)), key: hex(&random(32)), path: path.to_string(), code: String::new() }
+    }
 }
 
 #[derive(Serialize, Deserialize, Default)]
@@ -182,7 +173,6 @@ pub struct Status {
 pub struct Folder {
     pub id: String,
     pub key: Vec<u8>,
-    pub code: String,
     pub root: PathBuf,
     pub idx: Mutex<Index>,
     pub act: Mutex<VecDeque<Activity>>,
@@ -223,6 +213,7 @@ pub struct App {
     cfg: Mutex<Config>,
     folders: RwLock<Vec<Arc<Folder>>>,
     pub peers: Mutex<HashMap<String, Peer>>,
+    pub pairing: Mutex<crate::pair::Pairing>,
 }
 
 static APP: OnceLock<App> = OnceLock::new();
@@ -236,11 +227,15 @@ pub fn init(data: PathBuf, port: u16, disc_port: u16, disc_send: Vec<u16>) {
     if cfg.device_id.is_empty() {
         cfg.device_id = hex(&random(8));
     }
+    for f in cfg.folders.iter_mut().filter(|f| f.id.is_empty()) {
+        f.id = hex(&sha(&format!("foldersync id {}", f.code)))[..24].to_string();
+        f.key = hex(&sha(&format!("foldersync key {}", f.code)));
+    }
     if cfg.device_name.is_empty() {
         cfg.device_name = std::env::var("COMPUTERNAME").or_else(|_| std::env::var("HOSTNAME")).unwrap_or_else(|_| "Laptop".into());
     }
     write_json(&data.join("config.json"), &cfg);
-    let _ = APP.set(App { data, port, disc_port, disc_send, cfg: Mutex::new(cfg), folders: Default::default(), peers: Default::default() });
+    let _ = APP.set(App { data, port, disc_port, disc_send, cfg: Mutex::new(cfg), folders: Default::default(), peers: Default::default(), pairing: Default::default() });
 }
 
 impl App {
@@ -266,12 +261,12 @@ impl App {
 
     /// Starts keeping a folder: its index, the thread that syncs it and the one that follows its repository.
     pub fn open_folder(&self, fc: &FolderCfg) {
-        let (id, dir) = (folder_id(&fc.code), self.data.join("folders"));
+        let dir = self.data.join("folders");
         let _ = fs::create_dir_all(&dir);
-        let ix_file = dir.join(format!("{}.json", id));
+        let ix_file = dir.join(format!("{}.json", fc.id));
         let f = Arc::new(Folder {
-            key: sha(&format!("foldersync key {}", fc.code)),
-            code: fc.code.clone(),
+            id: fc.id.clone(),
+            key: crate::unhex(&fc.key).unwrap_or_default(),
             root: PathBuf::from(&fc.path),
             idx: Mutex::new(read_json(&ix_file)),
             act: Default::default(),
@@ -280,7 +275,6 @@ impl App {
             git_busy: Default::default(),
             gone: Default::default(),
             ix_file,
-            id,
         });
         let _ = fs::remove_dir_all(f.root.join(crate::sync::SCRATCH));
         self.folders.write().unwrap().push(f.clone());

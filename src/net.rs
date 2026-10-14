@@ -136,6 +136,8 @@ pub struct Peer {
     pub addr: SocketAddr,
     pub folders: Vec<String>,
     pub seen: Instant,
+    /// It has an invite open, so a code typed here may be for it.
+    pub inviting: bool,
 }
 
 impl Peer {
@@ -147,7 +149,8 @@ impl Peer {
 pub fn hello(ask: bool) -> Value {
     let a = app();
     let (id, name) = (a.me(), a.cfg().device_name.clone());
-    json!({"app": APP_TAG, "id": id, "name": name, "port": a.port, "folders": a.all().iter().map(|f| &f.id).collect::<Vec<_>>(), "ask": ask})
+    json!({"app": APP_TAG, "id": id, "name": name, "port": a.port, "folders": a.all().iter().map(|f| &f.id).collect::<Vec<_>>(), "ask": ask,
+           "invite": crate::pair::open_invite(&a.pairing.lock().unwrap()).is_some()})
 }
 
 fn upsert(v: &Value, ip: IpAddr) -> bool {
@@ -163,7 +166,7 @@ fn upsert(v: &Value, ip: IpAddr) -> bool {
         log!("laptop {} ({}) at {}:{}", name, id, ip, port);
     }
     let addr = SocketAddr::new(ip, port as u16);
-    peers.insert(id.to_string(), Peer { id: id.to_string(), name, addr, folders, seen: Instant::now() });
+    peers.insert(id.to_string(), Peer { id: id.to_string(), name, addr, folders, seen: Instant::now(), inviting: v["invite"] == true });
     true
 }
 

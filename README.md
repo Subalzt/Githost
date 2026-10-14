@@ -3,7 +3,7 @@
 Folders kept the same on every laptop on the same Wi-Fi, laptop to laptop with nothing in
 between, and a GitHub repository behind each one that anyone commits to with one button.
 
-- **Share a folder**, give its code (`7KQ2-MX9P-4TRD`) to your pals, and they **Join with a code**.
+- **Share a folder** and **Invite**: your pals type the 4-digit code (`4821`) under **Join with a code**.
   Every save on one laptop shows up on the others within a second or two: new files, edits,
   deletes, moves, whole folders.
 - **Connect a GitHub repository** once, on any laptop. The others connect to it by themselves.
@@ -16,8 +16,9 @@ between, and a GitHub repository behind each one that anyone commits to with one
 1. Run `folder-sync.exe`. It opens its own window (Edge or Chrome in app mode).
 2. Windows asks whether it may use the network: allow it on **Private networks**. Without that,
    other laptops cannot reach this one.
-3. **New shared folder**, choose the folder, and read out the code. On the other laptops: **Join
-   with a code**, type it, and choose an empty folder to keep it in.
+3. **New shared folder**, choose the folder, and read out the 4-digit code it shows. On the other
+   laptops: **Join with a code**, type it, and choose an empty folder to keep it in. The code works
+   for 10 minutes, for as many laptops as you give it to; **Invite** makes a new one later.
 4. In **Changes**, paste the repository (`owner/repo` is enough) and **Connect**. The first push
    opens GitHub's own sign-in (Git Credential Manager, which comes with Git for Windows). Each pal
    needs to be a collaborator on the repository to push.
@@ -43,8 +44,12 @@ edited on one laptop and deleted on another is kept.
 - Laptops find each other by UDP broadcast on port 47801 every two seconds; the app listens on
   TCP 47800. On networks that keep laptops apart (some guest and hotspot networks), add the
   other laptop by address in **Settings**.
-- Every request between laptops is signed with a key made from the folder's code (HMAC-SHA256),
-  so only laptops that know the code can read or change the folder. The files themselves cross the
+- Each folder has a random 256-bit key, and every request between laptops is signed with it
+  (HMAC-SHA256), so only laptops that joined can read or change the folder. A laptop joins by
+  proving it was told the invite's code through SPAKE2 (over Ristretto): each try tests one guess,
+  nothing seen on the network lets anyone test more, and five tries that do not finish close the
+  invite. Only then is the folder's key passed across, hidden under the handshake's own key. Folders
+  shared with a 12-letter code before 0.3 keep working. The files themselves cross the
   network unencrypted, as on a file share; use it on networks you trust.
 - Each laptop keeps an index of the folder: a SHA-256 hash and a version vector per file. Every
   second each laptop asks the others what changed since it last asked, takes what is newer, and

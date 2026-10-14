@@ -1,6 +1,6 @@
 [package]
 name = "folder-sync"
-version = "0.2.0"
+version = "0.3.0"
 edition = "2021"
 description = "Keeps folders the same on every laptop on the Wi-Fi, with a GitHub repository behind them"
 publish = false
@@ -10,6 +10,7 @@ name = "folder-sync"
 path = "src/main.rs"
 
 [dependencies]
+curve25519-dalek = "4"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 sha2 = "0.10"

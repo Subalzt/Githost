@@ -4,6 +4,7 @@
 mod api;
 mod git;
 mod net;
+mod pair;
 mod store;
 mod sync;
 
@@ -31,6 +32,15 @@ pub fn random(n: usize) -> Vec<u8> {
     let mut v = vec![0u8; n];
     getrandom::getrandom(&mut v).expect("no randomness");
     v
+}
+
+pub fn unhex(s: &str) -> Option<Vec<u8>> {
+    (0..s.len()).step_by(2).map(|i| u8::from_str_radix(s.get(i..i + 2)?, 16).ok()).collect()
+}
+
+/// Compares in time that does not depend on where the two differ.
+pub fn same(a: &str, b: &str) -> bool {
+    a.len() == b.len() && a.bytes().zip(b.bytes()).fold(0, |acc, (x, y)| acc | (x ^ y)) == 0
 }
 
 pub fn sha(s: &str) -> Vec<u8> {
