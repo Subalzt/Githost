@@ -127,7 +127,7 @@ fn folder_json(f: &Folder) -> Value {
     let me = a.me();
     let activity: Vec<Value> = f.act.lock().unwrap().iter().take(60).map(|x| json!({"at": x.at, "kind": x.kind, "path": x.path, "who": a.name_of(&x.who), "mine": x.who == me})).collect();
     let st = f.st.lock().unwrap();
-    let invite = pair::open_invite(&a.pairing.lock().unwrap()).filter(|i| i.folder == f.id).map(|i| json!({"code": i.code, "until": i.until}));
+    let invite = pair::invite_for(&a.pairing.lock().unwrap(), &f.id).map(|i| json!({"code": i.code, "until": i.until}));
     let synced = st.pending == 0 && peers.iter().all(|p| st.synced_with.get(&p.id).is_some_and(|t| now_ms() - t < 8000));
     json!({
         "id": f.id, "name": f.name(), "path": f.root.display().to_string(), "invite": invite, "files": files, "bytes": bytes,

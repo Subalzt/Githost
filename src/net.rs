@@ -150,7 +150,7 @@ pub fn hello(ask: bool) -> Value {
     let a = app();
     let (id, name) = (a.me(), a.cfg().device_name.clone());
     json!({"app": APP_TAG, "id": id, "name": name, "port": a.port, "folders": a.all().iter().map(|f| &f.id).collect::<Vec<_>>(), "ask": ask,
-           "invite": crate::pair::open_invite(&a.pairing.lock().unwrap()).is_some()})
+           "invite": crate::pair::inviting(&a.pairing.lock().unwrap())})
 }
 
 fn upsert(v: &Value, ip: IpAddr) -> bool {
