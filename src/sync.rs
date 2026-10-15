@@ -18,8 +18,8 @@ use crate::net::{self, Peer, Req};
 use crate::store::{app, order, safe_path, Entry, Folder, Order};
 use crate::{folder_path, hash_copy, hash_file, hex, hmac, log, mtime, now_ms, random, url_encode};
 
-pub const SCRATCH: &str = ".foldersync-tmp";
-const ALWAYS: &[&str] = &[".git", SCRATCH, ".DS_Store", "Thumbs.db", "desktop.ini", "~$*", ".~lock.*#"];
+pub const SCRATCH: &str = ".githost-tmp";
+const ALWAYS: &[&str] = &[".git", SCRATCH, ".foldersync-tmp", ".DS_Store", "Thumbs.db", "desktop.ini", "~$*", ".~lock.*#"];
 
 /// One .gitignore line, with the folder its file is in: it holds only below that folder.
 #[derive(Clone, Debug)]

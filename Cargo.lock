@@ -86,20 +86,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "28dea519a9695b9977216879a3ebfddf92f1c08c05d984f8996aecd6ecdc811d"
 
 [[package]]
-name = "folder-sync"
-version = "0.5.0"
-dependencies = [
- "curve25519-dalek",
- "getrandom",
- "hmac",
- "open",
- "serde",
- "serde_json",
- "sha2",
- "sysinfo",
-]
-
-[[package]]
 name = "generic-array"
 version = "0.14.7"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -118,6 +104,20 @@ dependencies = [
  "cfg-if",
  "libc",
  "wasi",
+]
+
+[[package]]
+name = "githost"
+version = "0.6.0"
+dependencies = [
+ "curve25519-dalek",
+ "getrandom",
+ "hmac",
+ "open",
+ "serde",
+ "serde_json",
+ "sha2",
+ "sysinfo",
 ]
 
 [[package]]

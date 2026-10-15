@@ -299,6 +299,26 @@ pub fn status(f: &Folder) -> Value {
         let by = f.idx.lock().unwrap().entries.get(path).map(|e| app().name_of(&e.by)).unwrap_or_default();
         changes.push(json!({"path": path, "kind": kind, "by": by}));
     }
+    // Lines added and removed since the last commit (from the empty tree when there is none yet);
+    // a file git does not know yet counts all its lines as added. None for a binary file.
+    let base = if g.head.is_empty() { "4b825dc642cb6eb9a060e54bf8d69288fbee4904" } else { "HEAD" };
+    let numstat = if changes.is_empty() { String::new() } else { git(&f.root, &["diff", base, "--numstat", "--no-renames"], false).unwrap_or_default() };
+    let nums: std::collections::HashMap<&str, (Option<u64>, Option<u64>)> = numstat
+        .lines()
+        .filter_map(|l| {
+            let mut p = l.splitn(3, '\t');
+            let (a, d, path) = (p.next()?, p.next()?, p.next()?);
+            Some((path, (a.parse().ok(), d.parse().ok())))
+        })
+        .collect();
+    for c in changes.iter_mut() {
+        let path = c["path"].as_str().unwrap_or("").to_string();
+        let (a, d) = nums.get(path.as_str()).copied().unwrap_or_else(|| match std::fs::read(crate::folder_path(&f.root, &path)) {
+            Ok(b) if b.len() < 4 << 20 && !b.contains(&0) => (Some(b.iter().filter(|&&c| c == b'\n').count() as u64 + u64::from(!b.ends_with(b"\n") && !b.is_empty())), Some(0)),
+            _ => (None, None),
+        });
+        (c["added"], c["removed"]) = (json!(a), json!(d));
+    }
     let id = |k: &str| git(if g.repo { &f.root } else { Path::new(".") }, &["config", k], false).unwrap_or_default();
     let (repo_name, repo_web) = web(&g.remote);
     json!({
@@ -310,15 +330,31 @@ pub fn status(f: &Folder) -> Value {
 
 pub fn log(f: &Folder) -> Value {
     let g = f.git.lock().unwrap().clone();
-    let out = if g.head.is_empty() { String::new() } else { git(&f.root, &["log", "-n", "300", "--format=%H%x1f%an%x1f%at%x1f%s%x1e"], false).unwrap_or_default() };
-    let commits: Vec<Value> = out
-        .split('\x1e')
-        .map(|r| r.trim().split('\x1f').collect::<Vec<_>>())
-        .filter(|p| p.len() == 4)
-        .enumerate()
-        .map(|(i, p)| json!({"hash": p[0], "author": p[1], "at": p[2].parse::<u64>().unwrap_or(0) * 1000, "subject": p[3], "local": (i as u32) < g.ahead}))
-        .collect();
-    json!({"commits": commits, "repo_web": web(&g.remote).1})
+    // Every commit with its size ("3 files changed, 10 insertions(+), 2 deletions(-)"), so each
+    // person's totals cover the whole history; the newest 300 are listed.
+    let out = if g.head.is_empty() { String::new() } else { git(&f.root, &["log", "--shortstat", "--format=%x1e%H%x1f%an%x1f%at%x1f%s"], false).unwrap_or_default() };
+    let mut people: Vec<(String, u64, u64, u64)> = Vec::new();
+    let mut commits = Vec::new();
+    for (i, rec) in out.split('\x1e').filter(|r| !r.trim().is_empty()).enumerate() {
+        let (head, stat) = rec.split_once('\n').unwrap_or((rec, ""));
+        let p: Vec<&str> = head.split('\x1f').collect();
+        if p.len() != 4 {
+            continue;
+        }
+        let count = |word: &str| stat.split(',').find(|s| s.contains(word)).and_then(|s| s.split_whitespace().next()?.parse::<u64>().ok()).unwrap_or(0);
+        let (files, added, removed) = (count("file"), count("insertion"), count("deletion"));
+        match people.iter_mut().find(|x| x.0 == p[1]) {
+            Some(x) => (x.1, x.2, x.3) = (x.1 + 1, x.2 + added, x.3 + removed),
+            None => people.push((p[1].to_string(), 1, added, removed)),
+        }
+        if i < 300 {
+            commits.push(json!({"hash": p[0], "author": p[1], "at": p[2].parse::<u64>().unwrap_or(0) * 1000, "subject": p[3],
+                                "local": (i as u32) < g.ahead, "files": files, "added": added, "removed": removed}));
+        }
+    }
+    people.sort_by_key(|x| std::cmp::Reverse(x.2 + x.3));
+    let people: Vec<Value> = people.iter().map(|(n, c, a, d)| json!({"name": n, "commits": c, "added": a, "removed": d})).collect();
+    json!({"commits": commits, "people": people, "repo_web": web(&g.remote).1})
 }
 
 fn is_hash(c: &str) -> bool {

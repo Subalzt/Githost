@@ -1,4 +1,4 @@
-//! Folder Sync: folders kept the same on every laptop on the Wi-Fi, laptop to laptop with nothing
+//! Githost: folders kept the same on every laptop on the Wi-Fi, laptop to laptop with nothing
 //! in between, and a GitHub repository behind each one that anyone commits to with one button.
 #![cfg_attr(all(windows, not(debug_assertions)), windows_subsystem = "windows")]
 mod api;
@@ -127,11 +127,21 @@ macro_rules! log {
 }
 
 fn data_dir() -> PathBuf {
-    if let Ok(a) = std::env::var("APPDATA") {
-        return PathBuf::from(a).join("FolderSync");
+    // Settings from before the app was called Githost move over the first time.
+    let (old, new) = match std::env::var("APPDATA") {
+        Ok(a) => (PathBuf::from(&a).join("FolderSync"), PathBuf::from(a).join("Githost")),
+        Err(_) => {
+            let home = PathBuf::from(std::env::var("HOME").unwrap_or_else(|_| ".".into()));
+            match cfg!(target_os = "macos") {
+                true => (home.join("Library/Application Support/FolderSync"), home.join("Library/Application Support/Githost")),
+                false => (home.join(".config/foldersync"), home.join(".config/githost")),
+            }
+        }
+    };
+    if old.is_dir() && !new.exists() {
+        let _ = fs::rename(&old, &new);
     }
-    let home = PathBuf::from(std::env::var("HOME").unwrap_or_else(|_| ".".into()));
-    home.join(if cfg!(target_os = "macos") { "Library/Application Support/FolderSync" } else { ".config/foldersync" })
+    new
 }
 
 fn main() {
@@ -161,7 +171,7 @@ fn main() {
     };
     store::init(data, port, disc, disc_send);
     let a = store::app();
-    log!("Folder Sync {} as {} on port {}", env!("CARGO_PKG_VERSION"), a.cfg().device_name, port);
+    log!("Githost {} as {} on port {}", env!("CARGO_PKG_VERSION"), a.cfg().device_name, port);
     for fc in a.cfg().folders.clone() {
         a.open_folder(&fc);
     }

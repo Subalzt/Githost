@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Folder Sync</title>
+<title>Githost</title>
 <style>
 /* One light theme: soft pastel surfaces, square-ish corners, plain buttons. */
 :root {
@@ -90,6 +90,20 @@ kbd { font: 11px var(--mono); color: var(--ink3); border: 1px solid var(--line);
 .file .k { font: 600 12px var(--mono); width: 14px; text-align: center; color: var(--ink3); }
 .file .k.new { color: var(--ok); } .file .k.deleted { color: var(--bad); }
 .dir { color: var(--ink3); }
+.stat { font: 12px var(--mono); white-space: nowrap; margin-left: auto; } .plus { color: var(--ok); } .minus { color: var(--bad); } .stat .dim, .dim { color: var(--ink3); }
+.blocks { display: inline-flex; gap: 2px; margin-left: 8px; } .blocks i { width: 7px; height: 7px; border-radius: 1px; background: var(--soft2); } .blocks i.g { background: #8fcaa2; } .blocks i.r { background: #e6a39b; }
+.tr { display: flex; align-items: center; gap: 8px; padding: 4px 6px 4px calc(6px + var(--d) * 18px); border-radius: 3px; font-size: 13.5px; }
+.tr:hover { background: var(--soft); }
+.tr.folder { color: var(--ink2); cursor: pointer; font-weight: 500; } .tr.folder svg { color: var(--ink3); flex: none; }
+.tr .chev { width: 10px; color: var(--ink3); font: 10px var(--mono); flex: none; }
+.tr .gap { width: 10px; flex: none; }
+.newtag { font-size: 11px; font-weight: 600; border-radius: 3px; padding: 0 5px; } .newtag.new { color: var(--ok); background: #e2f1e6; } .newtag.deleted { color: var(--bad); background: var(--bad-bg); }
+.people { margin-top: 18px; }
+.people .bar2 { display: flex; height: 6px; border-radius: 3px; overflow: hidden; background: var(--soft2); margin: 10px 0 12px; }
+.people .bar2 i { background: hsl(var(--h) 50% 72%); }
+.plist { display: flex; flex-wrap: wrap; gap: 8px; }
+.person { display: flex; align-items: center; gap: 8px; background: var(--soft); border: 1px solid var(--line); border-radius: 4px; padding: 6px 10px; font-size: 13px; }
+.person .c { color: var(--ink3); font-size: 12px; }
 
 .line { position: relative; margin-top: 26px; padding-left: 28px; }
 .line::before { content: ""; position: absolute; left: 7px; top: 6px; bottom: 6px; width: 1px; background: var(--line); }
@@ -150,7 +164,7 @@ pre .a { background: var(--add); } pre .d { background: var(--del); } pre .h { c
 <body>
 <div class="app">
   <aside class="rail">
-    <div class="brand"><svg width="20" height="20" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6"><rect x="2" y="5" width="11" height="11" rx="3"/><rect x="7" y="2" width="11" height="11" rx="3" fill="var(--rail)"/></svg>Folder Sync</div>
+    <div class="brand"><svg width="20" height="20" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6"><rect x="2" y="5" width="11" height="11" rx="3"/><rect x="7" y="2" width="11" height="11" rx="3" fill="var(--rail)"/></svg>Githost</div>
     <div class="sec">Projects</div>
     <div id="folders"></div>
     <button class="add" data-do="new"><b>+</b>Share a folder</button>
@@ -187,6 +201,31 @@ const hue = n => { let h = 2166136261; for (const c of String(n)) h = Math.imul(
 const ini = n => { const p = String(n).split(/[^\p{L}\p{N}]+/u).filter(Boolean); return (p.length > 1 ? p[0][0] + p[1][0] : String(n).slice(0, 2)).toUpperCase(); };
 const av = (n, cls = '') => `<span class="av ${cls}" style="--h:${hue(n)}" title="${esc(n)}">${esc(ini(n))}</span>`;
 const who = n => n === S.device.name ? 'You' : n;
+// Lines added and removed, in green and red, with five squares for the share of each (as GitHub does).
+const nums = (a, r) => `<span class="plus">+${(a || 0).toLocaleString()}</span> <span class="minus">−${(r || 0).toLocaleString()}</span>`;
+const blocks = (a, r) => { const t = a + r, g = t ? Math.round(5 * a / t) : 0; return `<span class="blocks">${[0, 1, 2, 3, 4].map(i => `<i class="${!t ? '' : i < g ? 'g' : 'r'}"></i>`).join('')}</span>`; };
+const stat = (a, r) => a == null ? '<span class="stat dim">binary</span>' : `<span class="stat">${nums(a, r)}</span>${blocks(a, r || 0)}`;
+const kindTag = k => k === 'new' || k === 'deleted' ? `<span class="newtag ${k}">${k}</span>` : '';
+const closed = new Set();
+// Files as a tree of folders, each folder with the lines of everything in it. A folder holding only
+// one folder is one row (src/components); clicking a folder folds it.
+function treeHtml(files, row, key) {
+  const root = { dirs: new Map(), files: [] };
+  for (const f of files) {
+    const parts = f.path.split('/'); let n = root;
+    for (const part of parts.slice(0, -1)) { if (!n.dirs.has(part)) n.dirs.set(part, { name: part, dirs: new Map(), files: [] }); n = n.dirs.get(part); }
+    n.files.push({ ...f, name: parts.at(-1) });
+  }
+  const sum = n => [...n.dirs.values()].map(sum).concat(n.files.map(f => [f.added || 0, f.removed || 0])).reduce((x, y) => [x[0] + y[0], x[1] + y[1]], [0, 0]);
+  const by = (a, b) => a.name.localeCompare(b.name);
+  const walk = (n, depth, at) => [...n.dirs.values()].sort(by).map(d => {
+    let name = d.name; while (!d.files.length && d.dirs.size === 1) { d = [...d.dirs.values()][0]; name += '/' + d.name; }
+    const k = key + ':' + at + name, shut = closed.has(k), [a, r] = sum(d);
+    return `<div class="tr folder" data-dir="${esc(k)}" style="--d:${depth}"><span class="chev">${shut ? '▸' : '▾'}</span><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/></svg><span class="ell">${esc(name)}</span>${stat(a, r)}</div>`
+      + (shut ? '' : walk(d, depth + 1, at + name + '/'));
+  }).join('') + n.files.sort(by).map(f => row(f, depth)).join('');
+  return walk(root, 0, '');
+}
 
 let S, G, L, sel = keep('sel'), open = {}, last = {}, mode = '';
 const folder = () => S?.folders.find(f => f.id === sel);
@@ -215,7 +254,7 @@ function render() {
   }
   if (main.dataset.v !== f.id) {
     main.dataset.v = f.id; last = {}; mode = '';
-    main.innerHTML = '<div class="wrap"><div class="head" id="head"></div><div id="bar"></div><div class="card"><h2 id="nowh"></h2><div id="compose"></div><div class="err" id="gerr"></div><div class="files" id="nowl"></div></div><div class="line" id="line"></div></div>';
+    main.innerHTML = '<div class="wrap"><div class="head" id="head"></div><div id="bar"></div><div class="card"><h2 id="nowh"></h2><div id="compose"></div><div class="err" id="gerr"></div><div class="files" id="nowl"></div></div><div class="people" id="people"></div><div class="line" id="line"></div></div>';
   }
   const [d, text] = statusOf(f), inv = f.invite;
   put($('#head'), `<div class="t"><div class="status ${d === 'bad' ? 'bad' : ''}"><span class="dot ${d}"></span><span class="ell">${esc(text)}</span></div><h1>${esc(f.name)}</h1>
@@ -252,14 +291,24 @@ function renderNow() {
     put($('#ident'), id.name && id.email ? `${av(id.name, 'sm')}<span class="ell">${esc(id.name)}</span><button class="link" data-do="identity">Change</button>` : `<button class="link" data-do="identity">Set the name your commits carry</button>`);
   }
   const acts = G?.repo ? [G.behind ? `<button class="btn ghost" data-do="pull">Get ${plural(G.behind, 'new commit')}</button>` : '', G.ahead ? `<button class="btn ghost" data-do="push">Push ${plural(G.ahead, 'commit')}</button>` : ''].join('') : '';
-  put($('#nowh'), `Now${n ? ` · ${plural(n, 'change')}` : ''}${G?.repo_web ? `<button class="link" style="text-transform:none;letter-spacing:0;font-weight:500" data-url="${esc(G.repo_web)}">${esc(G.repo_name)}</button>` : ''}<span class="acts">${acts}</span>`);
+  const tot = (G?.changes || []).reduce((t, c) => [t[0] + (c.added || 0), t[1] + (c.removed || 0)], [0, 0]);
+  put($('#nowh'), `Now${n ? ` · ${plural(n, 'change')} <span style="letter-spacing:0">${nums(tot[0], tot[1])}</span>` : ''}${G?.repo_web ? `<button class="link" style="text-transform:none;letter-spacing:0;font-weight:500" data-url="${esc(G.repo_web)}">${esc(G.repo_name)}</button>` : ''}<span class="acts">${acts}</span>`);
   put($('#gerr'), esc(G?.error || ''));
-  put($('#nowl'), want === 'commit' ? (G.changes.map(c => `<div class="file">${c.by ? av(c.by, 'sm') : '<span class="av sm" style="opacity:0"></span>'}<span class="k ${c.kind}">${{ new: '+', deleted: '−', renamed: '→' }[c.kind] || '~'}</span><span class="ell" title="${esc(c.path)}">${pathHtml(c.path)}</span></div>`).join('')
+  put($('#nowl'), want === 'commit' ? (treeHtml(G.changes, (c, d) => `<div class="tr" style="--d:${d}" title="${esc(c.path)}${c.by ? ' · ' + esc(who(c.by)) : ''}"><span class="gap"></span>${c.by ? av(c.by, 'sm') : '<span class="av sm" style="opacity:0"></span>'}<span class="ell">${esc(c.name)}</span>${kindTag(c.kind)}${stat(c.added, c.removed)}</div>`, 'now')
     || '<div class="none" style="padding:10px 8px 0">Everything is committed.</div>') : '');
 }
 
 // The project's story: commits, and between them what each laptop changed (grouped, newest first).
+// Who did what: each person's commits and lines over the whole history, and their share as a bar.
+function renderPeople() {
+  const ps = L?.people || [], total = ps.reduce((t, p) => t + p.added + p.removed, 0);
+  put($('#people'), !ps.length ? '' : `<div class="card" style="padding:14px 18px"><h2>Contributors</h2>
+    <div class="bar2">${ps.map(p => `<i style="--h:${hue(p.name)};width:${total ? 100 * (p.added + p.removed) / total : 100 / ps.length}%" title="${esc(p.name)}"></i>`).join('')}</div>
+    <div class="plist">${ps.map(p => `<div class="person">${av(p.name, 'sm')}<b style="font-weight:600">${esc(p.name)}</b><span class="c">${plural(p.commits, 'commit')}</span><span class="stat" style="margin-left:4px">${nums(p.added, p.removed)}</span></div>`).join('')}</div></div>`);
+}
+
 function renderLine(f) {
+  renderPeople();
   const groups = [];
   for (const a of f.activity.filter(a => a.kind !== 'followed')) {
     const verb = a.kind === 'deleted' ? 'deleted' : a.kind === 'conflict' ? 'conflict' : 'changed', name = a.mine ? S.device.name : a.who, g = groups.at(-1);
@@ -278,11 +327,11 @@ function commitHtml(c) {
   if (open.commit === c.hash) {
     const s = open.show;
     body = !s ? '<div class="open none" style="padding:12px 16px">Loading…</div>' : `<div class="open">${s.message.trim() !== c.subject ? `<div class="msg">${esc(s.message.trim())}</div>` : ''}
-      ${s.files.map(x => `<div class="file" data-file="${esc(x.path)}"><span class="k ${x.kind}">${{ new: '+', deleted: '−' }[x.kind] || '~'}</span><span class="ell">${pathHtml(x.path)}</span><span class="num"><span class="a">+${esc(x.added)}</span> <span class="d">−${esc(x.removed)}</span></span></div>${open.file === x.path ? diffHtml(open.diff) : ''}`).join('')}
+      ${treeHtml(s.files.map(x => ({ ...x, added: x.added === '-' ? null : +x.added, removed: x.removed === '-' ? null : +x.removed })), (x, d) => `<div class="tr" data-file="${esc(x.path)}" style="--d:${d};cursor:pointer"><span class="gap"></span><span class="ell">${esc(x.name)}</span>${kindTag(x.kind)}${stat(x.added, x.removed)}</div>${open.file === x.path ? diffHtml(open.diff) : ''}`, c.hash)}
       ${L.repo_web ? `<div style="padding:8px 8px 2px"><button class="link" style="font-size:12.5px" data-url="${esc(L.repo_web)}/commit/${c.hash}">View on GitHub</button></div>` : ''}</div>`;
   }
   return `<div class="ev c" data-c="${c.hash}" style="--h:${hue(c.author)}"><div class="s">${esc(c.subject)}</div>
-    <div class="m">${av(c.author, 'sm')}<span>${esc(c.author)}</span>·<span>${ago(c.at)}</span>·<span class="mono">${c.hash.slice(0, 7)}</span>${c.local ? '<span class="tag">Not pushed</span>' : ''}</div></div>${body}`;
+    <div class="m">${av(c.author, 'sm')}<span>${esc(c.author)}</span>·<span>${ago(c.at)}</span>·<span class="mono">${c.hash.slice(0, 7)}</span>${c.local ? '<span class="tag">Not pushed</span>' : ''}<span class="stat">${nums(c.added, c.removed)} <span class="dim">· ${plural(c.files || 0, 'file')}</span></span>${blocks(c.added || 0, c.removed || 0)}</div></div>${body}`;
 }
 
 function diffHtml(d) {
@@ -369,13 +418,13 @@ function settingsSheet() {
     <div class="set"><div class="k">Laptops by address</div><p style="margin:0 0 10px;font-size:13px">For networks that keep laptops from finding each other. This one is at <span class="mono">${esc(S.addresses.join(', ') || 'no address')}</span>.</p>
       <div class="row"><input class="field mono" id="ad" placeholder="192.168.1.20" spellcheck="false"><button class="btn ghost" id="add">Add</button></div>
       ${S.manual.map(m => `<div class="file"><span class="mono">${esc(m)}</span><button class="link" style="margin-left:auto" data-rm="${esc(m)}">Remove</button></div>`).join('')}</div>
-    <p style="margin:14px 0 0;font-size:12.5px">Folder Sync ${esc(S.version)} keeps syncing after its window closes; opening it again brings the window back.</p>
-    <div class="foot"><button class="btn ghost" id="quit">Quit Folder Sync</button><button class="btn" data-close>Done</button></div>`, (sh, close, fail) => {
+    <p style="margin:14px 0 0;font-size:12.5px">Githost ${esc(S.version)} keeps syncing after its window closes; opening it again brings the window back.</p>
+    <div class="foot"><button class="btn ghost" id="quit">Quit Githost</button><button class="btn" data-close>Done</button></div>`, (sh, close, fail) => {
     const post = (path, body, done) => api(path, body).then(() => { done && toast(done); close(); tick(); }, fail);
     $('#sv', sh).onclick = () => post('/api/device', { name: $('#nm', sh).value }, 'Saved');
     $('#add', sh).onclick = () => post('/api/peers/add', { addr: $('#ad', sh).value }, 'Added');
     sh.querySelectorAll('[data-rm]').forEach(b => b.onclick = () => post('/api/peers/remove', { addr: b.dataset.rm }));
-    $('#quit', sh).onclick = async () => { await api('/api/quit', {}); document.body.innerHTML = '<div class="hello"><h1>Folder Sync<br>has quit.</h1><p>Open it again to keep syncing.</p></div>'; window.close(); };
+    $('#quit', sh).onclick = async () => { await api('/api/quit', {}); document.body.innerHTML = '<div class="hello"><h1>Githost<br>has quit.</h1><p>Open it again to keep syncing.</p></div>'; window.close(); };
   });
 }
 function menu(anchor) {
@@ -395,9 +444,10 @@ async function run(path, body) {
 }
 
 document.addEventListener('click', async e => {
-  const t = e.target.closest('[data-f],[data-do],[data-url],[data-c],[data-file]'), d = t?.dataset;
+  const t = e.target.closest('[data-f],[data-dir],[data-do],[data-url],[data-c],[data-file]'), d = t?.dataset;
   if (!t) return;
   if (d.f) return d.f !== sel && select(d.f);
+  if (d.dir) { closed.has(d.dir) ? closed.delete(d.dir) : closed.add(d.dir); delete last.nowl; return redraw(); }
   if (d.url) return api('/api/open-url', { url: d.url });
   if (d.file !== undefined) {
     open.file = open.file === d.file ? '' : d.file; open.diff = null; redraw();

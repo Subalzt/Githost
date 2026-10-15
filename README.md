@@ -1,4 +1,4 @@
-# Folder Sync
+# Githost
 
 Folders kept the same on every laptop on the same Wi-Fi, laptop to laptop with nothing in
 between, and a GitHub repository behind each one that anyone commits to with one button.
@@ -9,9 +9,14 @@ between, and a GitHub repository behind each one that anyone commits to with one
 - **Connect a GitHub repository** once, on any laptop. The others connect to it by themselves.
 - **Commit and push** from any laptop. Everyone's history moves with it, nobody pulls.
 - **History**: every commit with who made it and when, the files it changed, and their diffs.
-- **Changes**: what is not committed yet, and which laptop changed each file.
+- **Changes**, live: what is not committed yet as a tree of folders, with the lines added and
+  removed in each file and folder, and which laptop changed each one.
+- **Contributors**: each person's commits and lines added and removed over the whole history.
+- A commit made on any laptop carries that laptop's own name and email and is pushed with that
+  person's own GitHub sign-in, so GitHub shows who really made it. There is no host: every laptop
+  has the whole folder and its own `.git`.
 
-<img src="docs/images/timeline.png" width="820" alt="A project: what is not committed yet, then commits and what each laptop changed">
+<img src="docs/images/timeline.png" width="820" alt="A project: changes not committed yet as a tree with lines added and removed, and who has done what">
 
 | A commit, its files and a diff | Inviting with a 4-digit code |
 | --- | --- |
@@ -21,7 +26,7 @@ between, and a GitHub repository behind each one that anyone commits to with one
 
 ## Getting started
 
-1. Run `folder-sync.exe`. It opens its own window (Edge or Chrome in app mode).
+1. Run `githost.exe`. It opens its own window (Edge or Chrome in app mode).
 2. Windows asks whether it may use the network: allow it on **Private networks**. Without that,
    other laptops cannot reach this one.
 3. **New shared folder**, choose the folder, and read out the 4-digit code it shows. On the other
@@ -87,5 +92,5 @@ edited on one laptop and deleted on another is kept.
 cargo build --release
 ```
 
-The app is `target/release/folder-sync.exe`. For trying two on one laptop:
+The app is `target/release/githost.exe`. For trying two on one laptop:
 `--data DIR --port N --disc N --disc-send N,M --no-window`.
