@@ -150,7 +150,7 @@ pub fn hello(ask: bool) -> Value {
     let a = app();
     let (id, name) = (a.me(), a.cfg().device_name.clone());
     json!({"app": APP_TAG, "id": id, "name": name, "port": a.port, "folders": a.all().iter().map(|f| &f.id).collect::<Vec<_>>(), "ask": ask,
-           "invite": crate::pair::inviting(&a.pairing.lock().unwrap())})
+           "invite": crate::pair::inviting(&a.pairing.lock().unwrap()), "handle": a.handle.lock().unwrap().clone()})
 }
 
 fn upsert(v: &Value, ip: IpAddr) -> bool {
@@ -160,7 +160,7 @@ fn upsert(v: &Value, ip: IpAddr) -> bool {
     }
     let name = v["name"].as_str().unwrap_or("").to_string();
     let folders = v["folders"].as_array().into_iter().flatten().filter_map(|s| s.as_str().map(String::from)).collect();
-    app().learn_name(id, &name);
+    app().learn_name(id, &name, v["handle"].as_str().unwrap_or(""));
     let mut peers = app().peers.lock().unwrap();
     if !peers.get(id).is_some_and(Peer::online) {
         log!("laptop {} ({}) at {}:{}", name, id, ip, port);

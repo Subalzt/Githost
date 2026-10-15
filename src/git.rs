@@ -46,6 +46,12 @@ pub fn git(dir: &Path, args: &[&str], interactive: bool) -> Result<String, Strin
     }
 }
 
+/// This laptop's git name: the one a shared folder's repository commits with, else the global one.
+pub fn handle() -> String {
+    let local = app().all().iter().filter(|f| f.root.join(".git").exists()).find_map(|f| git(&f.root, &["config", "user.name"], false).ok().filter(|n| !n.is_empty()));
+    local.or_else(|| git(Path::new("."), &["config", "--global", "user.name"], false).ok()).unwrap_or_default()
+}
+
 /// Holds the folder's git for one operation at a time.
 struct Busy<'a>(&'a Folder);
 

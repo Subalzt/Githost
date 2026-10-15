@@ -49,6 +49,8 @@ pub struct Config {
     pub manual_peers: Vec<String>,
     /// Names of laptops seen before, for showing who changed what.
     pub names: HashMap<String, String>,
+    /// Their git names (handles), so a laptop called PC1145 always shows whose it is.
+    pub handles: HashMap<String, String>,
 }
 
 pub type Vv = BTreeMap<String, u64>;
@@ -223,6 +225,8 @@ pub struct App {
     folders: RwLock<Vec<Arc<Folder>>>,
     pub peers: Mutex<HashMap<String, Peer>>,
     pub pairing: Mutex<crate::pair::Pairing>,
+    /// This laptop's git name, looked up every few seconds.
+    pub handle: Mutex<String>,
 }
 
 static APP: OnceLock<App> = OnceLock::new();
@@ -244,7 +248,7 @@ pub fn init(data: PathBuf, port: u16, disc_port: u16, disc_send: Vec<u16>) {
         cfg.device_name = std::env::var("COMPUTERNAME").or_else(|_| std::env::var("HOSTNAME")).unwrap_or_else(|_| "Laptop".into());
     }
     write_json(&data.join("config.json"), &cfg);
-    let _ = APP.set(App { data, port, disc_port, disc_send, cfg: Mutex::new(cfg), folders: Default::default(), peers: Default::default(), pairing: Default::default() });
+    let _ = APP.set(App { data, port, disc_port, disc_send, cfg: Mutex::new(cfg), folders: Default::default(), peers: Default::default(), pairing: Default::default(), handle: Default::default() });
 }
 
 impl App {
@@ -309,11 +313,29 @@ impl App {
         c.names.get(id).cloned().unwrap_or_else(|| format!("Laptop {}", &id[..id.len().min(4)]))
     }
 
-    pub fn learn_name(&self, id: &str, name: &str) {
+    pub fn learn_name(&self, id: &str, name: &str, handle: &str) {
         let mut c = self.cfg();
-        if !name.is_empty() && c.names.get(id).map(String::as_str) != Some(name) {
+        let new_name = !name.is_empty() && c.names.get(id).map(String::as_str) != Some(name);
+        let new_handle = !handle.is_empty() && c.handles.get(id).map(String::as_str) != Some(handle);
+        if new_name {
             c.names.insert(id.to_string(), name.to_string());
+        }
+        if new_handle {
+            c.handles.insert(id.to_string(), handle.to_string());
+        }
+        if new_name || new_handle {
             self.save(&c);
         }
+    }
+
+    /// Every laptop name known here, with its git name.
+    pub fn handles(&self) -> HashMap<String, String> {
+        let c = self.cfg();
+        let mut m: HashMap<String, String> = c.handles.iter().filter_map(|(id, h)| Some((c.names.get(id)?.clone(), h.clone()))).collect();
+        let mine = self.handle.lock().unwrap().clone();
+        if !mine.is_empty() {
+            m.insert(c.device_name.clone(), mine);
+        }
+        m
     }
 }

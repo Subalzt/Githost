@@ -175,6 +175,11 @@ fn main() {
     for fc in a.cfg().folders.clone() {
         a.open_folder(&fc);
     }
+    std::thread::spawn(|| loop {
+        let h = git::handle();
+        *store::app().handle.lock().unwrap() = h;
+        std::thread::sleep(Duration::from_secs(10));
+    });
     net::start();
     if window {
         api::open_window(port);

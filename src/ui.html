@@ -36,6 +36,7 @@ input, textarea { font: inherit; color: inherit; }
 .rail .add b { font: 500 14px/1 var(--mono); width: 16px; text-align: center; color: var(--ink3); }
 .near { display: flex; align-items: center; gap: 8px; padding: 5px 10px; font-size: 13px; }
 .near .s { color: var(--ink3); font-size: 12px; }
+.handle { font-size: 12px; font-weight: 500; color: var(--pri-t); }
 .me { display: flex; align-items: center; gap: 8px; padding: 10px 4px 0 10px; margin-top: 8px; border-top: 1px solid var(--line); font-weight: 600; font-size: 13px; }
 .me .icon { margin-left: auto; }
 .icon { width: 28px; height: 28px; border-radius: 4px; display: grid; place-items: center; color: var(--ink3); flex: none; }
@@ -199,8 +200,11 @@ const toast = t => { document.querySelectorAll('.toast').forEach(x => x.remove()
 // Everyone keeps one colour and two letters, worked out from their name.
 const hue = n => { let h = 2166136261; for (const c of String(n)) h = Math.imul(h ^ c.codePointAt(0), 16777619) >>> 0; return h % 24 * 15; };
 const ini = n => { const p = String(n).split(/[^\p{L}\p{N}]+/u).filter(Boolean); return (p.length > 1 ? p[0][0] + p[1][0] : String(n).slice(0, 2)).toUpperCase(); };
-const av = (n, cls = '') => `<span class="av ${cls}" style="--h:${hue(n)}" title="${esc(n)}">${esc(ini(n))}</span>`;
-const who = n => n === S.device.name ? 'You' : n;
+const av = (n, cls = '') => `<span class="av ${cls}" style="--h:${hue(n)}" title="${esc(n)}${S?.handles?.[n] && S.handles[n] !== n ? ' · ' + esc(S.handles[n]) : ''}">${esc(ini(n))}</span>`;
+// A laptop's name with its owner's git name, so PC1145 always says whose it is.
+const hd = n => { const h = S?.handles?.[n]; return h && h !== n ? h : ''; };
+const label = n => hd(n) ? `${n} (${hd(n)})` : n;
+const who = n => n === S.device.name ? 'You' : label(n);
 // Lines added and removed, in green and red, with five squares for the share of each (as GitHub does).
 const nums = (a, r) => `<span class="plus">+${(a || 0).toLocaleString()}</span> <span class="minus">−${(r || 0).toLocaleString()}</span>`;
 const blocks = (a, r) => { const t = a + r, g = t ? Math.round(5 * a / t) : 0; return `<span class="blocks">${[0, 1, 2, 3, 4].map(i => `<i class="${!t ? '' : i < g ? 'g' : 'r'}"></i>`).join('')}</span>`; };
@@ -230,7 +234,7 @@ function treeHtml(files, row, key) {
 let S, G, L, sel = keep('sel'), open = {}, last = {}, mode = '';
 const folder = () => S?.folders.find(f => f.id === sel);
 const statusOf = f => f.error ? ['bad', f.error] : f.pending || f.current ? ['busy', f.current ? 'Getting ' + f.current.split('/').pop() : `Getting ${plural(f.pending, 'file')}`]
-  : !f.peers.length ? ['', 'Waiting for the others to come online'] : f.synced ? ['ok', 'In sync with ' + names(f.peers)] : ['busy', 'Catching up with ' + names(f.peers)];
+  : !f.peers.length ? ['', 'Waiting for the others to come online'] : f.synced ? ['ok', 'In sync with ' + names(f.peers.map(label))] : ['busy', 'Catching up with ' + names(f.peers.map(label))];
 // Draws a part only when it changed, so nothing typed or scrolled is lost.
 const put = (el, html) => { if (el && last[el.id] !== html) { last[el.id] = html; el.innerHTML = html; } };
 
@@ -240,8 +244,8 @@ function render() {
     return `<button class="proj ${f.id === sel ? 'sel' : ''}" data-f="${f.id}"><div class="n"><span class="ell">${esc(f.name)}</span><span class="dot ${d}" style="margin-left:auto"></span></div>
       <div class="row"><span class="stack">${[S.device.name, ...f.peers].map(n => av(n, 'sm')).join('')}</span>${f.peers.length ? '' : 'Only here'}</div></button>`;
   }).join('') || '<div class="quiet">No projects yet</div>');
-  put($('#peers'), S.peers.map(p => `<div class="near">${av(p.name, 'sm')}<span class="t ell">${esc(p.name)}<div class="s ell">${p.shared.length ? esc(names(p.shared)) : p.others ? 'Other projects' : 'Nothing shared'}</div></span></div>`).join('') || '<div class="quiet">No one else on this network</div>');
-  put($('#me'), `${av(S.device.name, 'sm')}<span class="ell">${esc(S.device.name)}</span><button class="icon" data-do="settings" title="Settings"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"><path d="M4 7h10M18 7h2M4 17h4M12 17h8"/><circle cx="16" cy="7" r="2"/><circle cx="10" cy="17" r="2"/></svg></button>`);
+  put($('#peers'), S.peers.map(p => `<div class="near">${av(p.name, 'sm')}<span class="t ell">${esc(p.name)}${hd(p.name) ? `<div class="handle ell">${esc(hd(p.name))}</div>` : ''}<div class="s ell">${p.shared.length ? esc(names(p.shared)) : p.others ? 'Other projects' : 'Nothing shared'}</div></span></div>`).join('') || '<div class="quiet">No one else on this network</div>');
+  put($('#me'), `${av(S.device.name, 'sm')}<span class="t ell">${esc(S.device.name)}${hd(S.device.name) ? `<div class="handle ell">${esc(hd(S.device.name))}</div>` : ''}</span><button class="icon" data-do="settings" title="Settings"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"><path d="M4 7h10M18 7h2M4 17h4M12 17h8"/><circle cx="16" cy="7" r="2"/><circle cx="10" cy="17" r="2"/></svg></button>`);
   const f = folder(), main = $('#main');
   if (!f) {
     if (main.dataset.v !== 'hello') {

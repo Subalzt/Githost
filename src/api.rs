@@ -152,9 +152,10 @@ fn state() -> Value {
         .collect();
     peers.sort_by(|x, y| x["name"].as_str().cmp(&y["name"].as_str()));
     let folders: Vec<Value> = folders.iter().map(|f| folder_json(f)).collect();
+    let handles = a.handles();
     let c = a.cfg();
     json!({
-        "device": {"name": c.device_name}, "version": env!("CARGO_PKG_VERSION"), "folders": folders, "peers": peers, "manual": c.manual_peers,
+        "device": {"name": c.device_name}, "handles": handles, "version": env!("CARGO_PKG_VERSION"), "folders": folders, "peers": peers, "manual": c.manual_peers,
         "addresses": net::local_v4().iter().map(|(ip, _)| ip.to_string()).collect::<Vec<_>>(),
     })
 }
