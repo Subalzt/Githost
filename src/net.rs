@@ -15,7 +15,7 @@ use serde_json::{json, Value};
 use crate::store::app;
 use crate::{log, url_decode, PORT};
 
-pub const APP_TAG: &str = "foldersync/2";
+pub const APP_TAG: &str = "foldersync/3";
 
 pub struct Req {
     pub method: String,

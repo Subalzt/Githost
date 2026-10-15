@@ -32,9 +32,14 @@ syncing works without it.
 
 ## What travels
 
-Everything in the folder except what its `.gitignore` or `.syncignore` (at the top of the folder)
-lists, and except `.git` itself, which each laptop keeps for its own. So `node_modules/`, build
-output and logs stay put when the repository ignores them.
+Everything in the folder, empty folders and symbolic links included, except what its `.gitignore`
+and `.syncignore` files list (at the top and in any folder below it, read as git reads them), and
+except `.git` itself, which each laptop keeps for its own. So `node_modules/`, build output and logs
+stay put when the repository ignores them.
+
+A link travels as a link, never as what it points to. A link to a folder becomes a junction on a
+Windows laptop without Developer Mode; a link to a file needs Developer Mode there, and the app says
+so when it does. Nothing is ever written through a link to somewhere outside the folder.
 
 When two laptops change the same file before either has the other's change, the later edit keeps
 the name and the other is kept beside it as `name (LAPTOP's copy).ext`, on both laptops. A file
@@ -65,8 +70,6 @@ edited on one laptop and deleted on another is kept.
 ## Limits
 
 - Same network only (or one reachable by address).
-- `.gitignore` files inside subfolders are not read, only the top one.
-- Empty folders and symbolic links do not travel.
 - Built and tested on Windows; the code builds for macOS and Linux (the window uses Chrome or
   Edge there too) but has not been tried on them.
 

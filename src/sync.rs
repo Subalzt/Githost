@@ -1,9 +1,11 @@
 //! Keeping a folder the same everywhere. Every second the folder is walked: a file whose size or time
 //! differs from the index is hashed, and a new hash is a new version; a file gone is marked deleted.
-//! Then every laptop sharing the folder is asked what changed since last time. A version that came
-//! after this laptop's is taken; one changed apart from this one is a conflict, settled the same way
-//! on every laptop (a file beats a deletion, then the later edit wins), and the losing side keeps its
-//! copy beside the winner. The folder's .gitignore and .syncignore say what stays on each laptop.
+//! Folders (empty ones too) and symbolic links are entries as well, with "dir" or "link:<target>" for
+//! a hash. Then every laptop sharing the folder is asked what changed since last time. A version that
+//! came after this laptop's is taken; one changed apart from this one is a conflict, settled the same
+//! way on every laptop (a file beats a deletion, then the later edit wins), and the losing side keeps
+//! its copy beside the winner. The .gitignore and .syncignore files, at the top and in any folder
+//! below it, say what stays on each laptop, as they do for git.
 
 use std::collections::HashSet;
 use std::fs::{self, File};
@@ -19,21 +21,30 @@ use crate::{folder_path, hash_copy, hash_file, hex, hmac, log, mtime, now_ms, ra
 pub const SCRATCH: &str = ".foldersync-tmp";
 const ALWAYS: &[&str] = &[".git", SCRATCH, ".DS_Store", "Thumbs.db", "desktop.ini", "~$*", ".~lock.*#"];
 
-/// One .gitignore line: the pattern, whether it holds from the top only, for folders only, and whether it is a "!" one.
-type Rule = (String, bool, bool, bool);
+/// One .gitignore line, with the folder its file is in: it holds only below that folder.
+#[derive(Clone, Debug)]
+pub struct Rule {
+    base: String,
+    pat: String,
+    anchored: bool,
+    dir_only: bool,
+    negate: bool,
+}
 
-pub fn rules(root: &Path) -> Vec<Rule> {
-    let text = [".gitignore", ".syncignore"].map(|n| fs::read_to_string(root.join(n)).unwrap_or_default()).join("\n");
-    text.lines()
-        .map(str::trim_end)
-        .filter(|l| !l.is_empty() && !l.starts_with('#'))
-        .map(|l| {
+/// Adds the rules of the .gitignore and .syncignore in `dir` ("" for the top). Rules found deeper
+/// come later, and the last rule that matches decides, so a deeper file overrides a higher one.
+pub fn add_rules(root: &Path, dir: &str, rules: &mut Vec<Rule>) {
+    for name in [".gitignore", ".syncignore"] {
+        let Ok(text) = fs::read_to_string(folder_path(root, dir).join(name)) else { continue };
+        for l in text.lines().map(str::trim_end).filter(|l| !l.is_empty() && !l.starts_with('#')) {
             let (negate, l) = l.strip_prefix('!').map_or((false, l), |r| (true, r));
             let (dir_only, l) = (l.ends_with('/'), l.trim_end_matches('/'));
-            (l.trim_start_matches('/').to_string(), l.contains('/'), dir_only, negate)
-        })
-        .filter(|r| !r.0.is_empty())
-        .collect()
+            let pat = l.trim_start_matches('/').to_string();
+            if !pat.is_empty() {
+                rules.push(Rule { base: dir.to_string(), pat, anchored: l.contains('/'), dir_only, negate });
+            }
+        }
+    }
 }
 
 pub fn ignored(rules: &[Rule], rel: &str, is_dir: bool) -> bool {
@@ -41,8 +52,11 @@ pub fn ignored(rules: &[Rule], rel: &str, is_dir: bool) -> bool {
     if ALWAYS.iter().any(|p| glob(p.as_bytes(), base.as_bytes())) {
         return true;
     }
-    let hit = |(p, anchored, dir_only, _): &&Rule| (is_dir || !dir_only) && glob(p.as_bytes(), (if *anchored { rel } else { base }).as_bytes());
-    rules.iter().filter(hit).last().is_some_and(|r| !r.3)
+    let hit = |r: &&Rule| {
+        let below = if r.base.is_empty() { Some(rel) } else { rel.strip_prefix(r.base.as_str()).and_then(|s| s.strip_prefix('/')) };
+        (is_dir || !r.dir_only) && below.is_some_and(|below| glob(r.pat.as_bytes(), (if r.anchored { below } else { base }).as_bytes()))
+    };
+    rules.iter().filter(hit).last().is_some_and(|r| !r.negate)
 }
 
 /// Whether a path, or any folder it is in, stays on each laptop.
@@ -94,19 +108,47 @@ pub fn run(f: Arc<Folder>) {
     }
 }
 
-fn walk(root: &Path, rel: &str, rules: &[Rule], files: &mut Vec<(String, u64, i64)>, unreadable: &mut Vec<String>) {
+/// Where a link points, written with / so laptops on other systems read it the same way. A link to
+/// somewhere in the folder written as a full path (as Windows junctions are) is made relative, so it
+/// points to the same place on every laptop.
+fn link_target(root: &Path, full: &Path) -> Option<String> {
+    let t = fs::read_link(full).ok()?;
+    let t = PathBuf::from(t.to_string_lossy().trim_start_matches(r"\\?\").trim_start_matches(r"\??\"));
+    let t = match (t.is_absolute(), t.strip_prefix(root), full.parent().and_then(|p| p.strip_prefix(root).ok())) {
+        (true, Ok(inside), Some(from)) => PathBuf::from("../".repeat(from.components().count())).join(inside),
+        _ => t,
+    };
+    Some(t.to_string_lossy().replace('\\', "/"))
+}
+
+/// What is at a path here, as the index writes it: (size, time, hash), the hash left out for a file.
+struct Item {
+    path: String,
+    size: u64,
+    mtime: i64,
+    hash: Option<String>,
+}
+
+fn walk(root: &Path, rel: &str, rules: &mut Vec<Rule>, items: &mut Vec<Item>, unreadable: &mut Vec<String>) {
+    add_rules(root, rel, rules);
     let Ok(rd) = fs::read_dir(folder_path(root, rel)) else { return unreadable.push(rel.to_string()) };
     for e in rd.flatten() {
-        let (Ok(ft), Ok(md)) = (e.file_type(), e.metadata()) else { continue };
+        let Ok(md) = fs::symlink_metadata(e.path()) else { continue };
         let name = e.file_name().to_string_lossy().into_owned();
         let p = if rel.is_empty() { name } else { format!("{}/{}", rel, name) };
-        if ft.is_symlink() || ignored(rules, &p, ft.is_dir()) {
+        let ft = md.file_type();
+        if ignored(rules, &p, ft.is_dir()) {
             continue;
         }
-        if ft.is_dir() {
-            walk(root, &p, rules, files, unreadable);
+        if ft.is_symlink() {
+            // Not followed: the link itself travels.
+            let Some(t) = link_target(root, &e.path()) else { continue };
+            items.push(Item { path: p, size: 0, mtime: 0, hash: Some(format!("link:{}", t)) });
+        } else if ft.is_dir() {
+            items.push(Item { path: p.clone(), size: 0, mtime: 0, hash: Some("dir".into()) });
+            walk(root, &p, rules, items, unreadable);
         } else if ft.is_file() {
-            files.push((p, md.len(), mtime(&md)));
+            items.push(Item { path: p, size: md.len(), mtime: mtime(&md), hash: None });
         }
     }
 }
@@ -117,27 +159,31 @@ pub fn scan(f: &Folder) {
         f.st.lock().unwrap().error = format!("{} is not there", f.root.display());
         return;
     }
-    let rules = rules(&f.root);
-    let (mut files, mut unreadable) = (Vec::new(), Vec::new());
-    walk(&f.root, "", &rules, &mut files, &mut unreadable);
+    let (mut rules, mut items, mut unreadable) = (Vec::new(), Vec::new(), Vec::new());
+    walk(&f.root, "", &mut rules, &mut items, &mut unreadable);
+    *f.rules.lock().unwrap() = rules.clone();
     let me = app().me();
-    // The files that look changed are hashed outside the lock, noted with the entry as it was.
+    // What looks changed, noted with the entry as it was; files are hashed outside the lock.
     let todo: Vec<_> = {
         let ix = f.idx.lock().unwrap();
-        files.iter().filter(|(p, size, mt)| !ix.entries.get(p).is_some_and(|e| !e.deleted && e.size == *size && e.mtime == *mt)).map(|(p, size, mt)| (p.clone(), *size, *mt, ix.entries.get(p).map(|e| e.seq))).collect()
+        let same = |i: &Item, e: &Entry| !e.deleted && i.size == e.size && i.mtime == e.mtime && i.hash.as_ref().map_or(e.is_file(), |h| *h == e.hash);
+        items.iter().filter(|i| !ix.entries.get(&i.path).is_some_and(|e| same(i, e))).map(|i| (i, ix.entries.get(&i.path).map(|e| e.seq))).collect()
     };
-    let hashed: Vec<_> = todo.into_iter().filter_map(|(p, size, mt, seq)| Some((hash_file(&folder_path(&f.root, &p)).ok()?, p, size, mt, seq))).collect();
+    let hashed: Vec<_> = todo.into_iter().filter_map(|(i, seq)| Some((i.hash.clone().or_else(|| hash_file(&folder_path(&f.root, &i.path)).ok())?, i, seq))).collect();
     let mut ix = f.idx.lock().unwrap();
-    for (h, p, size, mt, seq) in hashed {
-        let still = fs::metadata(folder_path(&f.root, &p)).is_ok_and(|md| md.len() == size && mtime(&md) == mt);
-        if ix.entries.get(&p).map(|e| e.seq) != seq || !still {
+    for (h, i, seq) in hashed {
+        let still = i.hash.is_some() || fs::metadata(folder_path(&f.root, &i.path)).is_ok_and(|md| md.len() == i.size && mtime(&md) == i.mtime);
+        if ix.entries.get(&i.path).map(|e| e.seq) != seq || !still {
             continue; // taken from another laptop while being hashed, or still being written
         }
-        match ix.entries.get_mut(&p) {
-            Some(e) if !e.deleted && e.hash == h => e.mtime = mt,
+        match ix.entries.get_mut(&i.path) {
+            Some(e) if !e.deleted && e.hash == h => e.mtime = i.mtime,
             _ => {
-                ix.local_change(&me, &p, size, mt, h, false);
-                f.note("changed", &p, &me);
+                let is_dir = h == "dir";
+                ix.local_change(&me, &i.path, i.size, i.mtime, h, false);
+                if !is_dir {
+                    f.note("changed", &i.path, &me);
+                }
             }
         }
         ix.dirty = true;
@@ -146,7 +192,7 @@ pub fn scan(f: &Folder) {
     let live = ix.entries.values().filter(|e| !e.deleted).count();
     {
         let mut st = f.st.lock().unwrap();
-        st.empty_scans = if files.is_empty() && live > 0 { st.empty_scans + 1 } else { 0 };
+        st.empty_scans = if items.is_empty() && live > 0 { st.empty_scans + 1 } else { 0 };
         if (1..4).contains(&st.empty_scans) {
             return;
         }
@@ -154,17 +200,21 @@ pub fn scan(f: &Folder) {
             st.error.clear();
         }
     }
-    let seen: HashSet<&str> = files.iter().map(|(p, _, _)| p.as_str()).collect();
+    let seen: HashSet<&str> = items.iter().map(|i| i.path.as_str()).collect();
     let missing: Vec<String> = ix
         .entries
         .iter()
         .filter(|(p, e)| !e.deleted && !seen.contains(p.as_str()) && !unreadable.iter().any(|u| u.is_empty() || p.starts_with(&format!("{}/", u))))
         .map(|(p, _)| p.clone())
         .collect();
-    for p in missing {
-        if !folder_path(&f.root, &p).exists() && !ignored_path(&rules, &p) {
-            ix.local_change(&me, &p, 0, 0, String::new(), true);
-            f.note("deleted", &p, &me);
+    // Deepest first, so a folder's contents are gone on the others before the folder is.
+    for p in missing.iter().rev() {
+        if fs::symlink_metadata(folder_path(&f.root, p)).is_err() && !ignored_path(&rules, p) {
+            let was_dir = ix.entries.get(p).is_some_and(|e| e.hash == "dir");
+            ix.local_change(&me, p, 0, 0, String::new(), true);
+            if !was_dir {
+                f.note("deleted", p, &me);
+            }
         }
     }
     f.save(&mut ix);
@@ -192,7 +242,7 @@ fn pull(f: &Folder, p: &Peer) -> Result<(), String> {
     let mut upto = if seq < since { 0 } else { seq }; // below: its index started over, so take everything again
     crate::git::from_peer(f, p, &v["git"]);
     let entries: Vec<(String, Entry)> = serde_json::from_value(v["entries"].clone()).unwrap_or_default();
-    let rules = rules(&f.root);
+    let rules = f.rules.lock().unwrap().clone();
     let (mut pending, mut last_err) = (0, String::new());
     for (path, re) in entries.iter().filter(|(p, _)| seq >= since && safe_path(p) && !ignored_path(&rules, p)) {
         if let Err(e) = step(f, p, path, re) {
@@ -240,58 +290,111 @@ fn decide(l: Option<&Entry>, re: &Entry) -> Act {
     }
 }
 
-/// Whether the file on disk is still what the index says (no edit here that is not yet noticed).
-fn unchanged_here(full: &Path, l: Option<&Entry>) -> bool {
-    match (fs::metadata(full), l) {
-        (Ok(md), Some(e)) => !e.deleted && md.len() == e.size && mtime(&md) == e.mtime,
-        (Ok(_), None) => false,
-        (Err(_), l) => l.map_or(true, |e| e.deleted),
+/// Whether what is on disk is still what the index says (no change here that is not yet noticed).
+fn unchanged_here(root: &Path, full: &Path, l: Option<&Entry>) -> bool {
+    let md = fs::symlink_metadata(full);
+    match (md, l) {
+        (Ok(md), Some(e)) if !e.deleted => match e.hash.strip_prefix("link:") {
+            _ if e.hash == "dir" => md.is_dir(),
+            Some(t) => md.file_type().is_symlink() && link_target(root, full).as_deref() == Some(t),
+            None => md.is_file() && md.len() == e.size && mtime(&md) == e.mtime,
+        },
+        (md, l) => md.is_err() && l.map_or(true, |e| e.deleted),
     }
+}
+
+/// A path whose folder, or a folder above it, is a link here: writing there could land outside.
+fn through_link(root: &Path, rel: &str) -> bool {
+    rel.match_indices('/').any(|(i, _)| fs::symlink_metadata(folder_path(root, &rel[..i])).is_ok_and(|m| m.file_type().is_symlink()))
+}
+
+fn make_link(target: &str, at: &Path) -> io::Result<()> {
+    #[cfg(windows)]
+    {
+        // Windows has file links and folder links; a link to nothing yet is made a file link.
+        let dest = at.parent().and_then(|d| d.join(target).canonicalize().ok()).filter(|t| t.is_dir());
+        let target = target.replace('/', "\\");
+        let r = if dest.is_some() { std::os::windows::fs::symlink_dir(&target, at) } else { std::os::windows::fs::symlink_file(&target, at) };
+        match (r, dest) {
+            // Without Developer Mode a folder link can still be a junction, which takes the full path.
+            (Err(e), Some(dest)) if e.raw_os_error() == Some(1314) => {
+                let dest = dest.to_string_lossy().trim_start_matches(r"\\?\").to_string();
+                let made = crate::quiet("cmd").args(["/C", "mklink", "/J"]).arg(at).arg(dest).stdout(std::process::Stdio::null()).status();
+                if made.is_ok_and(|s| s.success()) { Ok(()) } else { Err(io::Error::other("cannot make the folder link here")) }
+            }
+            (Err(e), _) if e.raw_os_error() == Some(1314) => Err(io::Error::other("Windows makes links to files only in Developer Mode (Settings, System, For developers)")),
+            (r, _) => r,
+        }
+    }
+    #[cfg(unix)]
+    std::os::unix::fs::symlink(target, at)
+}
+
+/// Removes a file, a link or an empty folder; a folder with something in it here stays.
+fn remove(full: &Path, e: &Entry) -> io::Result<()> {
+    let r = if e.hash == "dir" { fs::remove_dir(full) } else { fs::remove_file(full).or_else(|_| fs::remove_dir(full)) };
+    r.or_else(|err| if err.kind() == io::ErrorKind::NotFound { Ok(()) } else { Err(err) })
 }
 
 fn step(f: &Folder, p: &Peer, path: &str, re: &Entry) -> Result<(), String> {
     let full = folder_path(&f.root, path);
+    if through_link(&f.root, path) {
+        log!("{}: {} is inside a link here; left alone", f.name(), path);
+        return Ok(());
+    }
     let l = f.idx.lock().unwrap().entries.get(path).cloned();
     let act = decide(l.as_ref(), re);
     let tmp = match act {
         Act::Nothing => return Ok(()),
-        Act::Fetch(_) => Some(fetch(f, p, path, re)?),
+        Act::Fetch(_) if re.is_file() => Some(fetch(f, p, path, re)?),
         _ => None,
     };
     let mut ix = f.idx.lock().unwrap();
     let busy = "changed here too; looking again";
-    if ix.entries.get(path).map(|e| e.seq) != l.as_ref().map(|e| e.seq) || (matches!(act, Act::Delete | Act::Fetch(_)) && !unchanged_here(&full, l.as_ref())) {
+    if ix.entries.get(path).map(|e| e.seq) != l.as_ref().map(|e| e.seq) || (matches!(act, Act::Delete | Act::Fetch(_)) && !unchanged_here(&f.root, &full, l.as_ref())) {
         let _ = tmp.map(fs::remove_file);
         return Err(busy.into());
     }
     match act {
         Act::Record => ix.take_remote(path, re, 0),
         Act::Merge => ix.merge_vv(path, &re.vv),
-        Act::Delete => {
-            if let Err(e) = fs::remove_file(&full).or_else(|e| if e.kind() == io::ErrorKind::NotFound { Ok(()) } else { Err(e) }) {
-                return Err(format!("cannot delete: {}", e));
+        Act::Delete => match remove(&full, l.as_ref().unwrap()) {
+            Ok(()) => {
+                ix.take_remote(path, re, 0);
+                if l.as_ref().is_some_and(|e| e.hash != "dir") {
+                    f.note("deleted", path, &re.by);
+                }
             }
-            // Folders left empty go too.
-            full.ancestors().skip(1).take_while(|d| *d != f.root && d.starts_with(&f.root)).take_while(|d| fs::remove_dir(d).is_ok()).count();
-            ix.take_remote(path, re, 0);
-            f.note("deleted", path, &re.by);
-        }
+            // A folder that still has things in it here: they are newer than the deletion, so it is
+            // kept, and said again so the others keep (or bring back) it too.
+            Err(_) if re.deleted && l.as_ref().is_some_and(|e| e.hash == "dir") && full.is_dir() => {
+                let me = app().me();
+                ix.merge_vv(path, &re.vv);
+                ix.local_change(&me, path, 0, 0, "dir".into(), false);
+            }
+            Err(e) => return Err(format!("cannot delete: {}", e)),
+        },
         Act::Fetch(conflict) => {
-            let tmp = tmp.unwrap();
             let put = || -> io::Result<()> {
                 fs::create_dir_all(full.parent().unwrap())?;
                 if conflict {
                     fs::rename(&full, conflict_name(&full, &app().cfg().device_name))?;
                 }
-                fs::rename(&tmp, &full)
+                match (&tmp, re.hash.strip_prefix("link:")) {
+                    (Some(tmp), _) => fs::rename(tmp, &full),
+                    (None, Some(target)) => make_link(target, &full),
+                    (None, None) => fs::create_dir_all(&full),
+                }
             };
             if let Err(e) = put() {
-                let _ = fs::remove_file(&tmp);
+                let _ = tmp.map(fs::remove_file);
                 return Err(format!("cannot write (open in another program?): {}", e));
             }
-            let mt = fs::metadata(&full).map_or(re.mtime, |m| mtime(&m));
+            let mt = if re.is_file() { fs::metadata(&full).map_or(re.mtime, |m| mtime(&m)) } else { 0 };
             ix.take_remote(path, re, mt);
-            f.note(if conflict { "conflict" } else { "got" }, path, &re.by);
+            if re.is_file() {
+                f.note(if conflict { "conflict" } else { "got" }, path, &re.by);
+            }
         }
         Act::Nothing => {}
     }
@@ -309,7 +412,7 @@ fn fetch(f: &Folder, p: &Peer, path: &str, re: &Entry) -> Result<PathBuf, String
     }
     f.st.lock().unwrap().current = path.to_string();
     let tmp = scratch.join(format!("{}.part", hex(&random(8))));
-    let local = f.idx.lock().unwrap().entries.iter().find(|(q, e)| !e.deleted && e.hash == re.hash && *q != path && unchanged_here(&folder_path(&f.root, q), Some(e))).map(|(q, _)| folder_path(&f.root, q));
+    let local = f.idx.lock().unwrap().entries.iter().find(|(q, e)| !e.deleted && e.hash == re.hash && *q != path && unchanged_here(&f.root, &folder_path(&f.root, q), Some(e))).map(|(q, _)| folder_path(&f.root, q));
     let got = File::create(&tmp).and_then(|mut out| match &local {
         Some(src) => hash_copy(&mut File::open(src)?, Some(&mut out), None),
         None => {
@@ -360,14 +463,21 @@ mod tests {
             assert_eq!(glob(p.as_bytes(), s.as_bytes()), want, "{} {}", p, s);
         }
         let dir = std::env::temp_dir().join(format!("fsync-ign-{}", std::process::id()));
-        fs::create_dir_all(&dir).unwrap();
+        fs::create_dir_all(dir.join("web/x")).unwrap();
         fs::write(dir.join(".gitignore"), "node_modules/\n*.log\n!keep.log\n/build\ndocs/*.tmp\n").unwrap();
-        let r = rules(&dir);
+        fs::write(dir.join("web/.gitignore"), "*.tmp\n/local\n!important.log\n").unwrap();
+        let (mut r, mut items, mut bad) = (Vec::new(), Vec::new(), Vec::new());
+        walk(&dir, "", &mut r, &mut items, &mut bad);
         assert!(ignored(&r, "node_modules", true) && !ignored(&r, "node_modules", false));
         assert!(ignored(&r, "x/y.log", false) && !ignored(&r, "keep.log", false));
         assert!(ignored(&r, "build", true) && !ignored(&r, "src/build", true));
         assert!(ignored(&r, "docs/a.tmp", false) && ignored(&r, ".git", true) && ignored(&r, "a/Thumbs.db", false));
         assert!(ignored_path(&r, "node_modules/x/a.js") && !ignored_path(&r, "src/main.rs"));
+        // A .gitignore in a folder holds below it only, and over the ones above.
+        assert!(ignored(&r, "web/a.tmp", false) && ignored(&r, "web/x/b.tmp", false) && !ignored(&r, "a.tmp", false));
+        assert!(ignored(&r, "web/local", true) && !ignored(&r, "web/x/local", true) && !ignored(&r, "local", true));
+        assert!(!ignored(&r, "web/important.log", false) && ignored(&r, "important.log", false));
+        assert!(items.iter().any(|i| i.path == "web/x" && i.hash.as_deref() == Some("dir")));
         let _ = fs::remove_dir_all(&dir);
     }
 

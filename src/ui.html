@@ -5,113 +5,171 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Folder Sync</title>
 <style>
-:root { --bg: #fff; --side: #f5f5f7; --text: #1d1d1f; --muted: #6e6e73; --faint: #a1a1a6; --line: rgba(0,0,0,.08); --hover: rgba(0,0,0,.045); --sel: rgba(0,0,0,.075);
-  --btn: #1d1d1f; --btn-text: #fff; --field: #f2f2f4; --ok: #2f9e5b; --bad: #d1343b; --add: rgba(47,158,91,.12); --del: rgba(209,52,59,.11); --shade: rgba(0,0,0,.28); color-scheme: light; }
-@media (prefers-color-scheme: dark) { :root { --bg: #000; --side: #0e0e0f; --text: #f5f5f7; --muted: #98989d; --faint: #636366; --line: rgba(255,255,255,.09); --hover: rgba(255,255,255,.05);
-  --sel: rgba(255,255,255,.09); --btn: #f5f5f7; --btn-text: #000; --field: #1c1c1e; --ok: #3fbf72; --bad: #ff5a5f; --add: rgba(63,191,114,.14); --del: rgba(255,90,95,.13); --shade: rgba(0,0,0,.6); color-scheme: dark; } }
+:root {
+  --bg: #fbfbfa; --panel: #ffffff; --rail: #f2f2f0; --ink: #111113; --ink2: #5d5d63; --ink3: #9b9ba1; --line: rgba(0,0,0,.08); --soft: rgba(0,0,0,.04); --soft2: rgba(0,0,0,.07);
+  --btn: #111113; --btnt: #fff; --ok: #1e9a52; --bad: #d23b3b; --add: rgba(30,154,82,.10); --del: rgba(210,59,59,.09); --shade: rgba(20,20,22,.32);
+  --av-l: 88%; --av-s: 55%; --av-t: 30%; color-scheme: light;
+  --text: "Segoe UI Variable Text", "Segoe UI", system-ui, -apple-system, sans-serif;
+  --display: "Segoe UI Variable Display", "Segoe UI", system-ui, -apple-system, sans-serif;
+  --mono: "Cascadia Code", "Cascadia Mono", ui-monospace, "SF Mono", Consolas, monospace;
+}
+@media (prefers-color-scheme: dark) { :root {
+  --bg: #000; --panel: #0c0c0d; --rail: #060607; --ink: #f2f2f3; --ink2: #a3a3a9; --ink3: #64646a; --line: rgba(255,255,255,.08); --soft: rgba(255,255,255,.045); --soft2: rgba(255,255,255,.08);
+  --btn: #f2f2f3; --btnt: #000; --ok: #3ccf7c; --bad: #ff5f5f; --add: rgba(60,207,124,.12); --del: rgba(255,95,95,.11); --shade: rgba(0,0,0,.66);
+  --av-l: 30%; --av-s: 42%; --av-t: 92%; color-scheme: dark; } }
 * { box-sizing: border-box; }
 html, body { height: 100%; margin: 0; }
-body { background: var(--bg); color: var(--text); font: 14px/1.45 "Segoe UI Variable Text", "Segoe UI", system-ui, -apple-system, sans-serif; overflow: hidden; }
+body { background: var(--bg); color: var(--ink); font: 14px/1.45 var(--text); overflow: hidden; -webkit-font-smoothing: antialiased; }
 button { font: inherit; color: inherit; background: none; border: 0; padding: 0; cursor: pointer; }
 input, textarea { font: inherit; color: inherit; }
-.mono { font-family: ui-monospace, "Cascadia Mono", Consolas, monospace; }
-.app { display: grid; grid-template-columns: 252px 1fr; height: 100vh; }
-aside { background: var(--side); border-right: 1px solid var(--line); display: flex; flex-direction: column; min-height: 0; padding: 18px 10px 12px; }
-.label { font-size: 11.5px; font-weight: 600; color: var(--muted); padding: 0 10px; margin: 6px 0; }
-.nav { display: flex; flex-direction: column; gap: 1px; overflow-y: auto; }
-.row { display: flex; align-items: center; gap: 10px; width: 100%; text-align: left; padding: 7px 10px; border-radius: 8px; }
-button.row:hover, .link:hover, .icon:hover, .menu button:hover, .file:hover { background: var(--hover); color: var(--text); }
-.row.sel, button.row.sel:hover { background: var(--sel); }
-.t { flex: 1; min-width: 0; }
-.n, .s, .ell { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.n { font-weight: 500; } .s { font-size: 12px; color: var(--muted); }
-.dot { width: 7px; height: 7px; border-radius: 50%; background: var(--faint); flex: none; }
+.mono { font-family: var(--mono); font-size: .92em; }
+.ell { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; }
+.app { display: grid; grid-template-columns: 248px 1fr; height: 100vh; }
+
+/* Rail */
+.rail { background: var(--rail); border-right: 1px solid var(--line); display: flex; flex-direction: column; min-height: 0; padding: 18px 12px 12px; gap: 2px; }
+.brand { display: flex; align-items: center; gap: 9px; padding: 2px 8px 18px; font: 600 14px var(--display); letter-spacing: -.01em; }
+.sec { font: 600 11px var(--text); letter-spacing: .08em; text-transform: uppercase; color: var(--ink3); padding: 14px 8px 6px; }
+.proj { display: block; width: 100%; text-align: left; padding: 9px 10px 10px; border-radius: 10px; position: relative; }
+.proj:hover { background: var(--soft); }
+.proj.sel { background: var(--soft2); }
+.proj .n { font-weight: 600; display: flex; align-items: center; gap: 8px; }
+.proj .row { display: flex; align-items: center; gap: 8px; margin-top: 6px; color: var(--ink3); font-size: 12px; }
+.rail .add { text-align: left; padding: 7px 10px; border-radius: 8px; color: var(--ink2); display: flex; gap: 9px; align-items: center; }
+.rail .add:hover { background: var(--soft); color: var(--ink); }
+.rail .add b { font: 500 16px/1 var(--mono); width: 18px; text-align: center; color: var(--ink3); }
+.near { display: flex; align-items: center; gap: 9px; padding: 6px 10px; font-size: 13px; }
+.near .s { color: var(--ink3); font-size: 12px; }
+.me { display: flex; align-items: center; gap: 9px; padding: 12px 6px 0 10px; margin-top: 10px; border-top: 1px solid var(--line); font-weight: 600; font-size: 13px; }
+.me .icon { margin-left: auto; }
+.icon { width: 30px; height: 30px; border-radius: 8px; display: grid; place-items: center; color: var(--ink3); flex: none; }
+.icon:hover { background: var(--soft2); color: var(--ink); }
+.quiet { color: var(--ink3); font-size: 12.5px; padding: 4px 10px; }
+
+/* People: each laptop or author always has the same colour, from its name */
+.av { --sz: 22px; width: var(--sz); height: var(--sz); border-radius: 50%; flex: none; display: inline-grid; place-items: center;
+  background: hsl(var(--h) var(--av-s) var(--av-l)); color: hsl(var(--h) 45% var(--av-t)); font: 650 calc(var(--sz) * .4)/1 var(--text); letter-spacing: .02em; }
+.av.lg { --sz: 34px; } .av.sm { --sz: 18px; }
+.stack { display: flex; } .stack .av { box-shadow: 0 0 0 2px var(--rail); } .stack .av + .av { margin-left: -6px; }
+.head .stack .av { box-shadow: 0 0 0 3px var(--bg); } .head .stack .av + .av { margin-left: -8px; }
+.dot { width: 7px; height: 7px; border-radius: 50%; background: var(--ink3); flex: none; }
 .dot.ok { background: var(--ok); } .dot.bad { background: var(--bad); }
-.dot.busy { background: none; border: 1.5px solid var(--muted); border-top-color: transparent; width: 10px; height: 10px; animation: spin .8s linear infinite; }
-@keyframes spin { to { transform: rotate(360deg); } }
-.link { text-align: left; padding: 6px 10px; border-radius: 8px; color: var(--muted); }
-.spacer { flex: 1; min-height: 16px; }
-.me { display: flex; align-items: center; justify-content: space-between; padding: 10px 10px 0; border-top: 1px solid var(--line); margin-top: 8px; font-size: 13px; font-weight: 500; }
-.icon { width: 28px; height: 28px; border-radius: 7px; display: grid; place-items: center; color: var(--muted); flex: none; }
-.note { font-size: 12.5px; color: var(--faint); padding: 2px 10px 6px; }
-main { min-width: 0; min-height: 0; display: flex; flex-direction: column; }
-.head { padding: 26px 36px 0; }
-.top { display: flex; align-items: flex-start; gap: 16px; }
-h1 { font-size: 26px; font-weight: 650; letter-spacing: -.02em; margin: 0; line-height: 1.15; }
-h3 { margin: 0 0 6px; font-size: 17px; font-weight: 650; }
-.path { color: var(--muted); font-size: 12.5px; margin-top: 4px; text-align: left; word-break: break-all; }
-.path:hover, .textlink:hover, .commit:hover .subj { color: var(--text); text-decoration: underline; text-underline-offset: 2px; }
-.code { margin-left: auto; display: flex; align-items: center; gap: 8px; flex: none; font-size: 12px; color: var(--muted); }
-.code .c { font-weight: 600; font-size: 13px; letter-spacing: .06em; padding: 8px 11px; border-radius: 8px; background: var(--field); color: var(--text); }
-.status { display: flex; align-items: center; gap: 8px; margin-top: 14px; color: var(--muted); font-size: 13px; flex-wrap: wrap; }
-.tabs { display: flex; gap: 22px; padding: 0 36px; margin-top: 18px; border-bottom: 1px solid var(--line); }
-.tab { padding: 9px 0 10px; color: var(--muted); font-weight: 500; border-bottom: 2px solid transparent; margin-bottom: -1px; }
-.tab:hover, .tab.on { color: var(--text); } .tab.on { border-bottom-color: var(--text); }
-.tab small { font-size: 12px; color: var(--muted); margin-left: 4px; font-weight: 400; }
-.body { flex: 1; overflow-y: auto; padding: 22px 36px 40px; }
-#bodyIn { max-width: 760px; }
-.btn { background: var(--btn); color: var(--btn-text); padding: 8px 16px; border-radius: 8px; font-weight: 550; white-space: nowrap; }
-.btn:hover { opacity: .88; } .btn:disabled { opacity: .35; cursor: default; }
-.btn.plain { background: var(--field); color: var(--text); } .btn.plain:hover { background: var(--sel); opacity: 1; }
-.field { width: 100%; background: var(--field); border: 1px solid transparent; border-radius: 8px; padding: 9px 12px; outline: none; }
-.field:focus { border-color: var(--faint); }
-textarea.field { resize: none; height: 64px; display: block; }
-.line { display: flex; gap: 8px; align-items: center; }
-.small { font-size: 12.5px; color: var(--muted); }
-.err, .deleted { color: var(--bad); } .new { color: var(--ok); }
-.error { color: var(--bad); font-size: 13px; margin-top: 10px; } .error:empty { display: none; }
-.textlink { color: var(--muted); text-decoration: underline; text-underline-offset: 2px; }
-.repo { display: flex; align-items: center; gap: 12px; margin-bottom: 16px; flex-wrap: wrap; font-weight: 600; }
-.branch { font-size: 12px; font-weight: 400; color: var(--muted); background: var(--field); padding: 3px 7px; border-radius: 6px; }
-.repo .right { margin-left: auto; display: flex; gap: 8px; font-weight: 400; }
-.composer { display: grid; grid-template-columns: 1fr auto; gap: 10px; align-items: end; margin-bottom: 8px; }
-.list { margin-top: 20px; border-top: 1px solid var(--line); }
-.item, .act { display: flex; align-items: center; gap: 12px; padding: 9px 2px; border-bottom: 1px solid var(--line); }
-.item .kind { width: 58px; flex: none; font-size: 12px; }
-.dir, .item .kind.edited, .by, .when { color: var(--muted); } .by, .when { font-size: 12.5px; flex: none; }
-.commit { padding: 12px 2px; border-bottom: 1px solid var(--line); cursor: pointer; }
-.subj { font-weight: 500; } .meta { font-size: 12.5px; color: var(--muted); margin-top: 2px; }
-.tag { font-size: 11.5px; padding: 1px 6px; border-radius: 5px; background: var(--field); color: var(--muted); margin-left: 6px; font-weight: 400; }
-.detail { padding: 6px 0 14px; border-bottom: 1px solid var(--line); }
-.msg { white-space: pre-wrap; color: var(--muted); font-size: 13px; margin: 0 0 8px; }
-.file { display: flex; gap: 10px; padding: 5px 8px; border-radius: 6px; cursor: pointer; font-size: 13px; }
-.num { font-size: 12px; } .num .a { color: var(--ok); } .num .d { color: var(--bad); }
-pre { margin: 6px 0 10px; padding: 10px 0; background: var(--field); border-radius: 8px; overflow: auto; font-size: 12px; line-height: 1.5; max-height: 420px; }
-pre span { display: block; padding: 0 12px; white-space: pre; min-width: max-content; }
-pre .a { background: var(--add); } pre .d { background: var(--del); } pre .h { color: var(--muted); }
-.none { color: var(--muted); padding: 18px 2px; }
-.welcome { margin: auto; text-align: center; max-width: 440px; padding: 24px; }
-.welcome h2 { font-size: 24px; font-weight: 650; letter-spacing: -.02em; margin: 0 0 8px; }
-.welcome p, .sheet p { color: var(--muted); margin: 0 0 20px; }
-.welcome .line { justify-content: center; }
-.shade { position: fixed; inset: 0; background: var(--shade); display: grid; place-items: center; z-index: 10; animation: fade .15s; }
-.sheet { background: var(--bg); border: 1px solid var(--line); border-radius: 14px; width: min(440px, calc(100vw - 32px)); padding: 22px 22px 18px; box-shadow: 0 24px 60px rgba(0,0,0,.25); }
-.stack { display: flex; flex-direction: column; gap: 10px; }
-.foot { display: flex; justify-content: flex-end; gap: 8px; margin-top: 18px; }
-.chosen { font-size: 13px; padding: 9px 12px; border-radius: 8px; background: var(--field); word-break: break-all; }
-.chosen:empty::before { content: "Nothing chosen"; color: var(--muted); }
-.big { font-size: 40px; font-weight: 650; letter-spacing: .12em; text-align: center; padding: 18px 0; border-radius: 10px; background: var(--field); }
-.setrow { padding: 12px 0; border-bottom: 1px solid var(--line); }
-.menu { position: fixed; background: var(--bg); border: 1px solid var(--line); border-radius: 10px; padding: 5px; box-shadow: 0 12px 34px rgba(0,0,0,.18); z-index: 11; min-width: 200px; }
-.menu button { display: block; width: 100%; text-align: left; padding: 7px 10px; border-radius: 6px; font-size: 13.5px; }
-.toast { position: fixed; bottom: 22px; left: 50%; transform: translateX(-50%); background: var(--btn); color: var(--btn-text); padding: 9px 16px; border-radius: 10px; font-size: 13.5px; z-index: 20; animation: fade .18s; max-width: 80vw; }
+.dot.busy { background: var(--ink2); animation: pulse 1s ease-in-out infinite; }
+@keyframes pulse { 50% { opacity: .25; } }
+
+/* Main */
+main { min-width: 0; min-height: 0; overflow-y: auto; }
+.wrap { max-width: 860px; margin: 0 auto; padding: 0 44px 64px; }
+.head { padding: 34px 0 26px; display: flex; gap: 24px; align-items: flex-end; position: sticky; top: 0; background: var(--bg); z-index: 2; }
+.head .t { flex: 1; min-width: 0; }
+.status { display: flex; align-items: center; gap: 8px; color: var(--ink2); font-size: 13px; }
+.status.bad { color: var(--bad); }
+h1 { font: 700 44px/1.02 var(--display); letter-spacing: -.035em; margin: 8px 0 10px; overflow-wrap: anywhere; }
+.facts { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 14px; color: var(--ink3); font-size: 12.5px; }
+.facts button:hover { color: var(--ink); }
+.chip { font: 12px var(--mono); color: var(--ink2); background: var(--soft2); padding: 2px 8px; border-radius: 6px; }
+.side { display: flex; align-items: center; gap: 12px; flex: none; }
+.bar { height: 2px; margin-top: -2px; background: linear-gradient(90deg, transparent, var(--ink2), transparent) 0 0 / 40% 100% no-repeat; animation: slide 1.1s linear infinite; opacity: .6; }
+@keyframes slide { from { background-position: -40% 0; } to { background-position: 140% 0; } }
+
+.btn { background: var(--btn); color: var(--btnt); padding: 9px 16px; border-radius: 999px; font-weight: 600; white-space: nowrap; }
+.btn:hover { opacity: .86; } .btn:disabled { opacity: .3; cursor: default; }
+.btn.ghost { background: var(--soft2); color: var(--ink); } .btn.ghost:hover { background: var(--line); opacity: 1; }
+.pill { display: inline-flex; align-items: center; gap: 8px; }
+.mini { display: inline-flex; gap: 3px; } .mini i { font: normal 600 13px/1 var(--mono); background: var(--panel); color: var(--ink); border-radius: 5px; width: 18px; height: 22px; display: grid; place-items: center; }
+
+/* Now */
+.card { background: var(--panel); border: 1px solid var(--line); border-radius: 18px; padding: 20px 22px 18px; }
+.card h2 { font: 650 13px var(--text); letter-spacing: .08em; text-transform: uppercase; color: var(--ink3); margin: 0; display: flex; align-items: center; gap: 10px; }
+.card h2 .acts { margin-left: auto; display: flex; gap: 8px; text-transform: none; letter-spacing: 0; }
+.card h3 { font: 650 20px var(--display); letter-spacing: -.02em; margin: 6px 0 6px; }
+.card p { color: var(--ink2); margin: 0 0 16px; max-width: 560px; }
+.field { width: 100%; background: var(--soft); border: 1px solid var(--line); border-radius: 12px; padding: 11px 14px; outline: none; }
+.field:focus { border-color: var(--ink3); }
+textarea.field { resize: none; height: 58px; display: block; margin-top: 14px; }
+.foot { display: flex; align-items: center; gap: 12px; margin-top: 12px; }
+.foot .who { display: flex; align-items: center; gap: 8px; color: var(--ink3); font-size: 12.5px; min-width: 0; margin-right: auto; }
+kbd { font: 11px var(--mono); color: var(--ink3); border: 1px solid var(--line); border-radius: 5px; padding: 1px 5px; }
+.link { color: var(--ink2); text-decoration: underline; text-underline-offset: 3px; text-decoration-color: var(--line); }
+.link:hover { color: var(--ink); text-decoration-color: currentColor; }
+.err { color: var(--bad); font-size: 13px; margin-top: 10px; } .err:empty { display: none; }
+.files { margin: 14px -8px 0; }
+.file { display: flex; align-items: center; gap: 10px; padding: 6px 8px; border-radius: 8px; font-size: 13.5px; }
+.file .k { font: 600 12px var(--mono); width: 14px; text-align: center; color: var(--ink3); }
+.file .k.new { color: var(--ok); } .file .k.deleted { color: var(--bad); }
+.dir { color: var(--ink3); }
+
+/* Timeline */
+.line { position: relative; margin-top: 30px; padding-left: 30px; }
+.line::before { content: ""; position: absolute; left: 8px; top: 6px; bottom: 6px; width: 1px; background: var(--line); }
+.ev { position: relative; padding: 9px 0; }
+.ev::before { content: ""; position: absolute; left: -26px; top: 15px; width: 9px; height: 9px; border-radius: 50%; background: var(--bg); border: 1.5px solid var(--ink3); }
+.ev.c::before { width: 13px; height: 13px; left: -28px; top: 14px; border: 0; background: hsl(var(--h) 60% 50%); box-shadow: 0 0 0 4px var(--bg); }
+.ev.c { padding: 12px 0; cursor: pointer; }
+.ev .s { font-weight: 600; font-size: 15px; }
+.ev.c:hover .s { text-decoration: underline; text-underline-offset: 3px; text-decoration-color: var(--ink3); }
+.ev .m { display: flex; align-items: center; gap: 8px; color: var(--ink3); font-size: 12.5px; margin-top: 3px; }
+.ev.a { color: var(--ink2); font-size: 13px; display: flex; gap: 10px; align-items: center; }
+.ev.a .when { margin-left: auto; color: var(--ink3); font-size: 12px; flex: none; }
+.tag { font-size: 11px; font-weight: 600; letter-spacing: .04em; text-transform: uppercase; color: var(--ink2); border: 1px solid var(--line); border-radius: 5px; padding: 0 5px; }
+.open { margin: 4px 0 8px; padding: 10px 8px; background: var(--panel); border: 1px solid var(--line); border-radius: 14px; }
+.open .msg { white-space: pre-wrap; color: var(--ink2); font-size: 13px; margin: 2px 8px 10px; }
+.open .file { cursor: pointer; } .open .file:hover { background: var(--soft); }
+.num { margin-left: auto; font: 12px var(--mono); } .num .a { color: var(--ok); } .num .d { color: var(--bad); }
+pre { margin: 4px 0 8px; padding: 10px 0; background: var(--soft); border-radius: 10px; overflow: auto; font: 12px/1.55 var(--mono); max-height: 440px; }
+pre span { display: block; padding: 0 14px; white-space: pre; min-width: max-content; }
+pre .a { background: var(--add); } pre .d { background: var(--del); } pre .h { color: var(--ink3); }
+.none { color: var(--ink3); padding: 14px 0; }
+
+/* First run */
+.hello { max-width: 760px; margin: 0 auto; padding: 14vh 44px 40px; }
+.hello h1 { font-size: 64px; margin: 0 0 18px; }
+.hello p { color: var(--ink2); font-size: 16px; max-width: 520px; margin: 0 0 30px; }
+.steps { display: grid; grid-template-columns: repeat(3, 1fr); gap: 14px; margin: 44px 0 0; }
+.steps div { border-top: 1px solid var(--line); padding-top: 14px; color: var(--ink2); font-size: 13px; }
+.steps b { display: block; font: 600 12px var(--mono); color: var(--ink3); margin-bottom: 6px; }
+.steps strong { display: block; color: var(--ink); font-size: 14px; margin-bottom: 2px; }
+
+/* Sheets */
+.shade { position: fixed; inset: 0; background: var(--shade); display: grid; place-items: center; z-index: 10; animation: fade .16s; backdrop-filter: blur(3px); }
+.sheet { background: var(--panel); border: 1px solid var(--line); border-radius: 22px; width: min(460px, calc(100vw - 32px)); padding: 26px 26px 22px; box-shadow: 0 30px 80px rgba(0,0,0,.35); animation: rise .2s cubic-bezier(.2,.8,.2,1); }
+.sheet h3 { font: 700 24px var(--display); letter-spacing: -.025em; margin: 0 0 6px; }
+.sheet p { color: var(--ink2); margin: 0 0 20px; }
+.sheet .foot { justify-content: flex-end; margin-top: 22px; }
+.tiles { display: flex; gap: 10px; justify-content: center; margin: 6px 0 8px; }
+.tiles > * { width: 64px; height: 78px; border-radius: 16px; background: var(--soft2); border: 1px solid var(--line); display: grid; place-items: center; font: 600 38px/1 var(--mono); text-align: center; outline: none; padding: 0; }
+.tiles input:focus { border-color: var(--ink2); }
+.timer { text-align: center; color: var(--ink3); font-size: 12.5px; }
+.chosen { display: flex; align-items: center; gap: 10px; padding: 11px 14px; border-radius: 12px; background: var(--soft); border: 1px dashed var(--line); color: var(--ink2); width: 100%; text-align: left; margin-top: 14px; word-break: break-all; }
+.chosen:hover { border-color: var(--ink3); color: var(--ink); }
+.set { padding: 14px 0; border-bottom: 1px solid var(--line); } .set:last-of-type { border: 0; }
+.set .k { font: 600 11px var(--text); letter-spacing: .08em; text-transform: uppercase; color: var(--ink3); margin-bottom: 8px; }
+.set .row { display: flex; gap: 8px; }
+.menu { position: fixed; background: var(--panel); border: 1px solid var(--line); border-radius: 14px; padding: 6px; box-shadow: 0 16px 40px rgba(0,0,0,.25); z-index: 11; min-width: 210px; animation: fade .12s; }
+.menu button { display: block; width: 100%; text-align: left; padding: 8px 12px; border-radius: 8px; font-size: 13.5px; }
+.menu button:hover { background: var(--soft2); }
+.menu .danger { color: var(--bad); }
+.toast { position: fixed; bottom: 26px; left: 50%; transform: translateX(-50%); background: var(--btn); color: var(--btnt); padding: 10px 18px; border-radius: 999px; font-size: 13.5px; font-weight: 500; z-index: 20; animation: fade .18s; max-width: 80vw; }
 @keyframes fade { from { opacity: 0; } }
-@media (max-width: 720px) { .app { grid-template-columns: 1fr; grid-template-rows: auto 1fr; } aside { border: 0; border-bottom: 1px solid var(--line); max-height: 40vh; }
-  .head, .tabs, .body { padding-left: 16px; padding-right: 16px; } .top { flex-direction: column; } .code { margin-left: 0; } }
+@keyframes rise { from { opacity: 0; transform: translateY(10px) scale(.98); } }
+@media (max-width: 760px) {
+  .app { grid-template-columns: 1fr; grid-template-rows: auto 1fr; } .rail { border: 0; border-bottom: 1px solid var(--line); max-height: 38vh; overflow-y: auto; }
+  .wrap, .hello { padding-left: 16px; padding-right: 16px; } .head { flex-direction: column; align-items: flex-start; } h1 { font-size: 34px; } .hello h1 { font-size: 40px; } .steps { grid-template-columns: 1fr; }
+}
 </style>
 </head>
 <body>
 <div class="app">
-  <aside>
-    <div class="label">Folders</div>
-    <div class="nav" id="folders"></div>
-    <button class="link" data-do="new">New shared folder</button>
-    <button class="link" data-do="join">Join with a code</button>
-    <div class="spacer"></div>
-    <div class="label">On this network</div>
-    <div class="nav" id="peers"></div>
-    <div class="me"><span class="ell" id="me"></span>
-      <button class="icon" data-do="settings" title="Settings"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg></button></div>
+  <aside class="rail">
+    <div class="brand"><svg width="20" height="20" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6"><rect x="2" y="5" width="11" height="11" rx="3"/><rect x="7" y="2" width="11" height="11" rx="3" fill="var(--rail)"/></svg>Folder Sync</div>
+    <div class="sec">Projects</div>
+    <div id="folders"></div>
+    <button class="add" data-do="new"><b>+</b>Share a folder</button>
+    <button class="add" data-do="join"><b>#</b>Join with a code</button>
+    <div style="flex:1"></div>
+    <div class="sec">Nearby</div>
+    <div id="peers"></div>
+    <div class="me" id="me"></div>
   </aside>
   <main id="main"></main>
 </div>
@@ -131,84 +189,117 @@ const ago = ms => {
 };
 const size = b => ['B', 'KB', 'MB', 'GB'].reduce((out, u, i) => b >= 1024 ** i ? (i ? (b / 1024 ** i).toFixed(1) : b) + ' ' + u : out, '0 B');
 const names = a => a.length < 2 ? a[0] || '' : a.slice(0, -1).join(', ') + ' and ' + a.at(-1);
-const pathHtml = p => { const i = p.lastIndexOf('/') + 1; return `<span class="dir">${esc(p.slice(0, i))}</span>${esc(p.slice(i))}`; };
 const plural = (n, w) => `${n} ${w}${n === 1 ? '' : 's'}`;
+const pathHtml = p => { const i = p.lastIndexOf('/') + 1; return `<span class="dir">${esc(p.slice(0, i))}</span>${esc(p.slice(i))}`; };
 const keep = (k, v) => { try { return v === undefined ? localStorage.getItem(k) || '' : localStorage.setItem(k, v); } catch { return ''; } };
 const toast = t => { document.querySelectorAll('.toast').forEach(x => x.remove()); document.body.insertAdjacentHTML('beforeend', `<div class="toast">${esc(t)}</div>`); setTimeout(() => $('.toast')?.remove(), 2800); };
+// Everyone keeps one colour and two letters, worked out from their name.
+const hue = n => { let h = 2166136261; for (const c of String(n)) h = Math.imul(h ^ c.codePointAt(0), 16777619) >>> 0; return h % 24 * 15; };
+const ini = n => { const p = String(n).split(/[^\p{L}\p{N}]+/u).filter(Boolean); return (p.length > 1 ? p[0][0] + p[1][0] : String(n).slice(0, 2)).toUpperCase(); };
+const av = (n, cls = '') => `<span class="av ${cls}" style="--h:${hue(n)}" title="${esc(n)}">${esc(ini(n))}</span>`;
+const who = n => n === S.device.name ? 'You' : n;
 
-let S, G, L, sel = keep('sel'), tab = keep('tab') || 'changes', open = {}, lastSide = '', lastHead = '', lastBody = '';
+let S, G, L, sel = keep('sel'), open = {}, last = {}, mode = '';
 const folder = () => S?.folders.find(f => f.id === sel);
 const statusOf = f => f.error ? ['bad', f.error] : f.pending || f.current ? ['busy', f.current ? 'Getting ' + f.current.split('/').pop() : `Getting ${plural(f.pending, 'file')}`]
-  : !f.peers.length ? ['', 'No other laptop on this network right now'] : f.synced ? ['ok', 'Up to date with ' + names(f.peers)] : ['busy', 'Catching up with ' + names(f.peers)];
+  : !f.peers.length ? ['', 'Waiting for the others to come online'] : f.synced ? ['ok', 'In sync with ' + names(f.peers)] : ['busy', 'Catching up with ' + names(f.peers)];
+// Draws a part only when it changed, so nothing typed or scrolled is lost.
+const put = (el, html) => { if (el && last[el.id] !== html) { last[el.id] = html; el.innerHTML = html; } };
 
 function render() {
-  const side = (S.folders.map(f => `<button class="row ${f.id === sel ? 'sel' : ''}" data-f="${f.id}"><span class="t"><div class="n">${esc(f.name)}</div>
-      <div class="s">${f.peers.length ? 'With ' + esc(names(f.peers)) : 'Only here'}</div></span><span class="dot ${statusOf(f)[0]}"></span></button>`).join('') || '<div class="note">None yet</div>')
-    + '\0' + (S.peers.map(p => `<div class="row"><span class="t"><div class="n">${esc(p.name)}</div><div class="s">${p.shared.length ? 'Shares ' + esc(names(p.shared)) : p.others ? 'Shares other folders' : 'Nothing shared'}</div></span></div>`).join('') || '<div class="note">No other laptops found</div>');
-  if (side !== lastSide) { lastSide = side; [$('#folders').innerHTML, $('#peers').innerHTML] = side.split('\0'); $('#me').textContent = S.device.name; }
-  const f = folder();
+  put($('#folders'), S.folders.map(f => {
+    const [d] = statusOf(f);
+    return `<button class="proj ${f.id === sel ? 'sel' : ''}" data-f="${f.id}"><div class="n"><span class="ell">${esc(f.name)}</span><span class="dot ${d}" style="margin-left:auto"></span></div>
+      <div class="row"><span class="stack">${[S.device.name, ...f.peers].map(n => av(n, 'sm')).join('')}</span>${f.peers.length ? '' : 'Only here'}</div></button>`;
+  }).join('') || '<div class="quiet">No projects yet</div>');
+  put($('#peers'), S.peers.map(p => `<div class="near">${av(p.name, 'sm')}<span class="t ell">${esc(p.name)}<div class="s ell">${p.shared.length ? esc(names(p.shared)) : p.others ? 'Other projects' : 'Nothing shared'}</div></span></div>`).join('') || '<div class="quiet">No one else on this network</div>');
+  put($('#me'), `${av(S.device.name, 'sm')}<span class="ell">${esc(S.device.name)}</span><button class="icon" data-do="settings" title="Settings"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"><path d="M4 7h10M18 7h2M4 17h4M12 17h8"/><circle cx="16" cy="7" r="2"/><circle cx="10" cy="17" r="2"/></svg></button>`);
+  const f = folder(), main = $('#main');
   if (!f) {
-    if (lastHead !== 'welcome') $('#main').innerHTML = `<div class="welcome"><h2>Keep a folder the same on every laptop</h2><p>Share a folder, then invite anyone on this network with a 4-digit code. Their changes arrive here as they save, and yours there.</p>
-      <div class="line"><button class="btn" data-do="new">Share a folder</button><button class="btn plain" data-do="join">Join with a code</button></div></div>`;
-    return lastHead = 'welcome';
+    if (main.dataset.v !== 'hello') {
+      main.dataset.v = 'hello'; last = {};
+      main.innerHTML = `<div class="hello"><h1>One folder.<br>Every laptop.</h1><p>Whatever anyone saves shows up on the others a second later, and one button commits it all to GitHub.</p>
+        <div class="pill"><button class="btn" data-do="new">Share a folder</button><button class="btn ghost" data-do="join">Join with a code</button></div>
+        <div class="steps"><div><b>01</b><strong>Share</strong>Pick a folder on this laptop.</div><div><b>02</b><strong>Invite</strong>Your pals type a 4-digit code.</div><div><b>03</b><strong>Commit</strong>Anyone pushes to GitHub for everyone.</div></div></div>`;
+    }
+    return;
   }
-  const [dot, text] = statusOf(f), n = G?.repo ? G.changes.length : 0;
-  const head = `<div class="head"><div class="top"><div class="t"><h1>${esc(f.name)}</h1><button class="path" data-do="open">${esc(f.path)}</button></div>
-    <div class="code">${f.invite ? `Code<button class="c mono" data-do="invite">${esc(f.invite.code)}</button>` : '<button class="btn plain" data-do="invite">Invite</button>'}<button class="icon" data-do="menu"><svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><circle cx="5" cy="12" r="1.8"/><circle cx="12" cy="12" r="1.8"/><circle cx="19" cy="12" r="1.8"/></svg></button></div></div>
-    <div class="status"><span class="dot ${dot}"></span><span class="${dot === 'bad' ? 'err' : ''}">${esc(text)}</span>·<span>${plural(f.files, 'file')}, ${size(f.bytes)}</span></div></div>
-    <div class="tabs">${[['changes', 'Changes' + (n ? `<small>${n}</small>` : '')], ['history', 'History'], ['activity', 'Activity']].map(([k, t]) => `<button class="tab ${tab === k ? 'on' : ''}" data-tab="${k}">${t}</button>`).join('')}</div>`;
-  if (head !== lastHead) {
-    const old = $('#bodyIn'), top = $('.body')?.scrollTop;
-    lastHead = head; $('#main').innerHTML = head + '<div class="body"><div id="bodyIn"></div></div>';
-    if (old && lastBody) $('.body').replaceChild(old, $('#bodyIn')); // keeps what is typed in it
-    $('.body').scrollTop = top || 0;
+  if (main.dataset.v !== f.id) {
+    main.dataset.v = f.id; last = {}; mode = '';
+    main.innerHTML = '<div class="wrap"><div class="head" id="head"></div><div id="bar"></div><div class="card"><h2 id="nowh"></h2><div id="compose"></div><div class="err" id="gerr"></div><div class="files" id="nowl"></div></div><div class="line" id="line"></div></div>';
   }
-  const el = $('#bodyIn'), html = tab === 'activity' ? activityHtml(f) : tab === 'history' ? historyHtml() : changesHtml();
-  if (html === lastBody) return;
-  const typed = ['msg', 'url'].map(id => $('#' + id)?.value), focus = document.activeElement?.id;
-  lastBody = el.innerHTML = html;
-  ['msg', 'url'].forEach((id, i) => { if (typed[i] != null && $('#' + id)) $('#' + id).value = typed[i]; });
-  if (focus) $('#' + focus)?.focus();
+  const [d, text] = statusOf(f), inv = f.invite;
+  put($('#head'), `<div class="t"><div class="status ${d === 'bad' ? 'bad' : ''}"><span class="dot ${d}"></span><span class="ell">${esc(text)}</span></div><h1>${esc(f.name)}</h1>
+    <div class="facts"><button class="mono ell" data-do="open" title="Open the folder">${esc(f.path)}</button><span>${plural(f.files, 'file')} · ${size(f.bytes)}</span>${G?.branch ? `<span class="chip">${esc(G.branch)}</span>` : ''}</div></div>
+    <div class="side"><span class="stack">${[S.device.name, ...f.peers].map(n => av(n, 'lg')).join('')}</span>
+    <button class="btn ${inv ? 'ghost' : ''} pill" data-do="invite">${inv ? `<span class="mini">${[...inv.code].map(c => `<i>${c}</i>`).join('')}</span>` : 'Invite'}</button>
+    <button class="icon" data-do="menu"><svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><circle cx="5" cy="12" r="1.7"/><circle cx="12" cy="12" r="1.7"/><circle cx="19" cy="12" r="1.7"/></svg></button></div>`);
+  put($('#bar'), d === 'busy' ? '<div class="bar"></div>' : '');
+  renderNow(); renderLine(f);
 }
 
-const activityHtml = f => f.activity.map(a => {
-  const who = a.mine ? 'You' : esc(a.who || 'Someone'), p = `<b style="font-weight:500">${esc(a.path)}</b>`;
-  const t = { changed: `${who} changed ${p}`, deleted: `${who} deleted ${p}`, got: `${p} from ${who}`, conflict: `${p} was changed here and by ${who}; both copies kept`, followed: `Moved to the newest commit, ${esc(a.path)}` }[a.kind];
-  return `<div class="act"><span class="t ell">${t}</span><span class="when">${ago(a.at)}</span></div>`;
-}).join('') || '<div class="none">Nothing has changed since Folder Sync started.</div>';
-
-function changesHtml() {
-  if (!G) return '<div class="none">Loading…</div>';
-  if (G.no_git) return `<div class="none">Git is not installed on this laptop. <button class="textlink" data-url="https://git-scm.com/downloads">Get Git</button>, then open this again.</div>`;
-  const err = `<div class="error">${esc(G.error)}</div>`;
-  if (!G.repo) {
-    const short = G.suggest.replace(/^https:\/\/github.com\/|\.git$/g, '');
-    return `<h3>Connect a GitHub repository</h3><p class="small">The files here stay as they are and the repository's history comes in beside them. The other laptops connect to it by themselves.</p>
-      <div class="line"><input class="field" id="url" placeholder="owner/repo or https://github.com/owner/repo" value="${esc(short)}" spellcheck="false">
-      <button class="btn" data-do="connect" ${G.busy ? 'disabled' : ''}>${G.busy ? 'Connecting…' : 'Connect'}</button></div>${short ? `<p class="small">The others use ${esc(short)}.</p>` : ''}${err}`;
+function renderNow() {
+  const want = !G ? 'loading' : G.no_git ? 'nogit' : G.repo ? 'commit' : 'connect';
+  const n = G?.changes?.length || 0, busy = !!G?.busy;
+  if (mode !== want) {
+    mode = want;
+    $('#compose').innerHTML = {
+      loading: '<div class="none">Loading…</div>',
+      nogit: `<h3>Git is not installed here</h3><p>Syncing works without it. To commit to GitHub, <button class="link" data-url="https://git-scm.com/downloads">get Git</button> and open this again.</p>`,
+      connect: `<h3>Connect a GitHub repository</h3><p>The files stay as they are and the history comes in beside them. The other laptops connect by themselves.</p>
+        <div class="pill" style="width:100%"><input class="field" id="url" placeholder="owner/repo" spellcheck="false"><button class="btn" data-do="connect">Connect</button></div>`,
+      commit: `<textarea class="field" id="msg"></textarea><div class="foot"><span class="who" id="ident"></span><kbd>Ctrl Enter</kbd><button class="btn" data-do="commit">Commit and push</button></div>`,
+    }[want];
   }
-  const n = G.changes.length, id = G.identity, act = (k, t) => `<button class="btn plain" data-do="${k}" ${G.busy ? 'disabled' : ''}>${t}</button>`;
-  return `<div class="repo">${G.repo_web ? `<button data-url="${esc(G.repo_web)}" title="Open on GitHub">${esc(G.repo_name)}</button>` : esc(G.repo_name || 'No remote')}
-      ${G.branch ? `<span class="branch mono">${esc(G.branch)}</span>` : ''}<div class="right">${G.behind ? act('pull', `Get ${plural(G.behind, 'new commit')}`) : ''}${G.ahead ? act('push', `Push ${plural(G.ahead, 'commit')}`) : ''}</div></div>
-    <div class="composer"><textarea class="field" id="msg" placeholder="${n ? 'What changed (optional)' : 'Nothing to commit'}" ${n ? '' : 'disabled'}></textarea>
-      <button class="btn" data-do="commit" ${n && !G.busy ? '' : 'disabled'}>${G.busy ? 'Working…' : G.remote ? 'Commit and push' : 'Commit'}</button></div>
-    <div class="small">${id.name && id.email ? `As ${esc(id.name)} &lt;${esc(id.email)}&gt; · <button class="textlink" data-do="identity">Change</button>` : 'Commits need your name and email · <button class="textlink" data-do="identity">Set them</button>'}</div>${err}
-    ${n ? `<div class="list">${G.changes.map(c => `<div class="item"><span class="kind ${c.kind}">${c.kind}</span><span class="t ell" title="${esc(c.path)}">${pathHtml(c.path)}</span><span class="by">${esc(c.by)}</span></div>`).join('')}</div>` : '<div class="none">No changes since the last commit.</div>'}`;
+  if (want === 'connect') {
+    const short = G.suggest.replace(/^https:\/\/github.com\/|\.git$/g, ''), url = $('#url');
+    if (short && !url.value) url.value = short;
+    $('[data-do="connect"]').disabled = busy; $('[data-do="connect"]').textContent = busy ? 'Connecting…' : 'Connect';
+  }
+  if (want === 'commit') {
+    const msg = $('#msg'), b = $('[data-do="commit"]'), id = G.identity;
+    msg.disabled = !n; msg.placeholder = n ? 'What changed? (optional)' : 'Nothing to commit';
+    b.disabled = !n || busy; b.textContent = busy ? 'Working…' : G.remote ? 'Commit and push' : 'Commit';
+    put($('#ident'), id.name && id.email ? `${av(id.name, 'sm')}<span class="ell">${esc(id.name)}</span><button class="link" data-do="identity">Change</button>` : `<button class="link" data-do="identity">Set the name your commits carry</button>`);
+  }
+  const acts = G?.repo ? [G.behind ? `<button class="btn ghost" data-do="pull">Get ${plural(G.behind, 'new commit')}</button>` : '', G.ahead ? `<button class="btn ghost" data-do="push">Push ${plural(G.ahead, 'commit')}</button>` : ''].join('') : '';
+  put($('#nowh'), `Now${n ? ` · ${plural(n, 'change')}` : ''}${G?.repo_web ? `<button class="link" style="text-transform:none;letter-spacing:0;font-weight:500" data-url="${esc(G.repo_web)}">${esc(G.repo_name)}</button>` : ''}<span class="acts">${acts}</span>`);
+  put($('#gerr'), esc(G?.error || ''));
+  put($('#nowl'), want === 'commit' ? (G.changes.map(c => `<div class="file">${c.by ? av(c.by, 'sm') : '<span class="av sm" style="opacity:0"></span>'}<span class="k ${c.kind}">${{ new: '+', deleted: '−', renamed: '→' }[c.kind] || '~'}</span><span class="ell" title="${esc(c.path)}">${pathHtml(c.path)}</span></div>`).join('')
+    || '<div class="none" style="padding:10px 8px 0">Everything is committed.</div>') : '');
 }
 
-function historyHtml() {
-  if (G && !G.repo) return '<div class="none">Connect a repository in Changes to see its history here.</div>';
-  if (!L) return '<div class="none">Loading…</div>';
-  return L.commits.map(c => `<div class="commit" data-c="${c.hash}"><div class="subj">${esc(c.subject)}${c.local ? '<span class="tag">Not pushed</span>' : ''}</div>
-    <div class="meta">${esc(c.author)} · ${ago(c.at)} · <span class="mono">${c.hash.slice(0, 7)}</span></div></div>${open.commit === c.hash ? detailHtml(c) : ''}`).join('') || '<div class="none">No commits yet.</div>';
+// The project's story: commits, and between them what each laptop changed (grouped, newest first).
+function renderLine(f) {
+  const groups = [];
+  for (const a of f.activity.filter(a => a.kind !== 'followed')) {
+    const verb = a.kind === 'deleted' ? 'deleted' : a.kind === 'conflict' ? 'conflict' : 'changed', name = a.mine ? S.device.name : a.who, g = groups.at(-1);
+    if (g && g.name === name && g.verb === verb && verb !== 'conflict' && g.first - a.at < 300000) { if (!g.paths.includes(a.path)) g.paths.push(a.path); }
+    else groups.push({ at: a.at, first: a.at, name, verb, paths: [a.path] });
+  }
+  const items = [...groups.map(g => ({ ...g, t: 'a' })), ...(L?.commits || []).map(c => ({ ...c, t: 'c' }))].sort((x, y) => y.at - x.at);
+  put($('#line'), items.map(i => i.t === 'c' ? commitHtml(i) : `<div class="ev a">${av(i.name, 'sm')}<span class="ell">${i.verb === 'conflict'
+      ? `<b>${esc(i.paths[0].split('/').pop())}</b> was changed here and by ${esc(who(i.name))}, so both copies are kept`
+      : `${esc(who(i.name))} ${i.verb} <b style="color:var(--ink);font-weight:500">${esc(i.paths[0].split('/').pop())}</b>${i.paths.length > 1 ? ` and ${plural(i.paths.length - 1, 'other')}` : ''}`}</span><span class="when">${ago(i.at)}</span></div>`).join('')
+    || `<div class="none">${G?.repo ? 'No commits yet.' : 'What anyone changes shows up here as it happens.'}</div>`);
 }
-const detailHtml = c => !open.show ? '<div class="detail small">Loading…</div>' : `<div class="detail">${open.show.message.trim() !== c.subject ? `<p class="msg">${esc(open.show.message.trim())}</p>` : ''}
-  ${open.show.files.map(f => `<div class="file" data-file="${esc(f.path)}"><span class="t ell">${pathHtml(f.path)}</span><span class="num mono"><span class="a">+${esc(f.added)}</span> <span class="d">−${esc(f.removed)}</span></span></div>${open.file === f.path ? diffHtml(open.diff) : ''}`).join('')}
-  ${L.repo_web ? `<p class="small" style="padding-left:8px"><button class="textlink" data-url="${esc(L.repo_web)}/commit/${c.hash}">View on GitHub</button></p>` : ''}</div>`;
+
+function commitHtml(c) {
+  let body = '';
+  if (open.commit === c.hash) {
+    const s = open.show;
+    body = !s ? '<div class="open none" style="padding:12px 16px">Loading…</div>' : `<div class="open">${s.message.trim() !== c.subject ? `<div class="msg">${esc(s.message.trim())}</div>` : ''}
+      ${s.files.map(x => `<div class="file" data-file="${esc(x.path)}"><span class="k ${x.kind}">${{ new: '+', deleted: '−' }[x.kind] || '~'}</span><span class="ell">${pathHtml(x.path)}</span><span class="num"><span class="a">+${esc(x.added)}</span> <span class="d">−${esc(x.removed)}</span></span></div>${open.file === x.path ? diffHtml(open.diff) : ''}`).join('')}
+      ${L.repo_web ? `<div style="padding:8px 8px 2px"><button class="link" style="font-size:12.5px" data-url="${esc(L.repo_web)}/commit/${c.hash}">View on GitHub</button></div>` : ''}</div>`;
+  }
+  return `<div class="ev c" data-c="${c.hash}" style="--h:${hue(c.author)}"><div class="s">${esc(c.subject)}</div>
+    <div class="m">${av(c.author, 'sm')}<span>${esc(c.author)}</span>·<span>${ago(c.at)}</span>·<span class="mono">${c.hash.slice(0, 7)}</span>${c.local ? '<span class="tag">Not pushed</span>' : ''}</div></div>${body}`;
+}
+
 function diffHtml(d) {
   const lines = (d ?? '').split('\n').filter(l => !/^(diff --git|index |--- |\+\+\+ |new file mode|deleted file mode|Binary files)/.test(l));
-  if (d == null || !lines.join('').trim()) return `<div class="small" style="padding:4px 8px">${d == null ? 'Loading…' : 'No text to show.'}</div>`;
-  return `<pre class="mono">${lines.map(l => `<span class="${{ '+': 'a', '-': 'd', '@': 'h' }[l[0]] || ''}">${esc(l) || ' '}</span>`).join('')}</pre>`;
+  if (d == null || !lines.join('').trim()) return `<div class="none" style="padding:4px 10px">${d == null ? 'Loading…' : 'No text to show.'}</div>`;
+  return `<pre>${lines.map(l => `<span class="${{ '+': 'a', '-': 'd', '@': 'h' }[l[0]] || ''}">${esc(l) || ' '}</span>`).join('')}</pre>`;
 }
 
 async function tick() {
@@ -220,7 +311,7 @@ async function gitTick() {
   try {
     const g = await api('/api/git?f=' + f.id);
     if (f.id !== sel) return;
-    if (tab === 'history' && (G?.head !== g.head || !L)) loadLog();
+    if (g.repo && (G?.head !== g.head || !L)) loadLog();
     G = g; render();
   } catch {}
 }
@@ -229,88 +320,95 @@ async function loadLog() {
   try { const l = await api('/api/git/log?f=' + id); if (id === sel) { L = l; render(); } } catch {}
 }
 function select(id) {
-  sel = id; keep('sel', id);
-  G = L = null; open = {}; lastHead = lastBody = lastSide = '';
-  render(); gitTick();
+  sel = id; keep('sel', id); G = L = null; open = {}; render(); gitTick();
 }
-function redraw() { lastBody = ''; render(); }
+const redraw = () => { delete last.line; render(); };
 
 function sheet(html, init) {
-  document.body.insertAdjacentHTML('beforeend', `<div class="shade"><div class="sheet">${html}<div class="error" id="er"></div></div></div>`);
-  const sh = document.body.lastElementChild, close = () => sh.remove();
+  document.body.insertAdjacentHTML('beforeend', `<div class="shade"><div class="sheet">${html}<div class="err" id="er"></div></div></div>`);
+  const sh = document.body.lastElementChild, close = () => { clearInterval(sh.timer); sh.remove(); };
   sh.onmousedown = e => e.target === sh && close();
   sh.querySelectorAll('[data-close]').forEach(b => b.onclick = close);
   const fail = e => $('#er', sh).textContent = e.message;
   init?.(sh, close, fail);
   sh.querySelector('input')?.focus();
 }
-const foot = go => `<div class="foot"><button class="btn plain" data-close>Cancel</button><button class="btn" id="go" ${go === 'Save' || go === 'Stop syncing' ? '' : 'disabled'}>${go}</button></div>`;
+const buttons = (go, on) => `<div class="foot"><button class="btn ghost" data-close>Cancel</button><button class="btn" id="go" ${on ? '' : 'disabled'}>${go}</button></div>`;
+const chooser = label => `<button class="chosen" id="pk"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/></svg><span id="ch">${label}</span></button>`;
 
 function addSheet(join) {
   let path = '';
-  sheet(join ? `<h3>Join a folder</h3><p>Type the code the other laptop shows under Invite, then choose where to keep the folder on this one.</p>
-      <div class="stack"><input class="field mono" id="cd" placeholder="4 digits" maxlength="4" inputmode="numeric" autocomplete="off"><div class="chosen" id="ch"></div><button class="btn plain" id="pk">Choose where…</button></div>${foot('Join')}`
-    : `<h3>Share a folder</h3><p>Everything in it is kept the same on each laptop that joins. What its .gitignore lists stays on each laptop.</p>
-      <div class="stack"><div class="chosen" id="ch"></div><button class="btn plain" id="pk">Choose folder…</button></div>${foot('Share')}`, (sh, close, fail) => {
-    const code = () => $('#cd', sh)?.value || '', check = () => $('#go', sh).disabled = !path || (join && code().length !== 4);
-    if (join) $('#cd', sh).oninput = e => { e.target.value = e.target.value.replace(/\D/g, '').slice(0, 4); check(); };
+  sheet(join ? `<h3>Join a project</h3><p>Type the code the other laptop shows, then choose where the folder goes on this one.</p>
+      <div class="tiles" id="cd">${'<input inputmode="numeric" maxlength="1" autocomplete="off">'.repeat(4)}</div>${chooser('Choose where to keep it')}${buttons('Join')}`
+    : `<h3>Share a folder</h3><p>Everything in it stays the same on every laptop that joins. What its .gitignore files list stays on each laptop.</p>${chooser('Choose a folder')}${buttons('Share')}`, (sh, close, fail) => {
+    const tiles = [...sh.querySelectorAll('#cd input')], code = () => tiles.map(t => t.value).join('');
+    const check = () => $('#go', sh).disabled = !path || (join && code().length !== 4);
+    tiles.forEach((t, i) => {
+      t.oninput = () => { const v = t.value.replace(/\D/g, ''); t.value = v.slice(-1); if (v.length > 1) [...v].slice(0, 4 - i).forEach((c, k) => tiles[i + k].value = c); (tiles[Math.min(i + Math.max(v.length, 1), 3)] || t).focus(); check(); };
+      t.onkeydown = e => { if (e.key === 'Backspace' && !t.value && i) tiles[i - 1].focus(); };
+    });
     $('#pk', sh).onclick = async () => {
       try { path = (await api('/api/pick', { title: join ? 'Choose a folder for it (an empty one)' : 'Choose a folder to share' })).path || path; } catch (e) { fail(e); }
-      $('#ch', sh).textContent = path; check();
+      if (path) $('#ch', sh).textContent = path; check();
     };
     $('#go', sh).onclick = async () => {
+      $('#go', sh).disabled = true;
       try {
         const r = await api(join ? '/api/folders/join' : '/api/folders/new', { path, code: code() });
         close(); S = await api('/api/state');
         select((S.folders.find(x => x.id === r.message || x.path.toLowerCase() === path.toLowerCase()) || S.folders.at(-1)).id);
         join ? toast(r.message) : inviteSheet(folder());
-      } catch (e) { fail(e); }
+      } catch (e) { fail(e); check(); }
     };
   });
 }
 async function inviteSheet(f) {
   try {
     const inv = f.invite || await api('/api/invite', { f: f.id });
-    sheet(`<h3>Invite to ${esc(f.name)}</h3><p>On each other laptop, choose Join with a code and type this. It works for 10 minutes, for everyone you give it to.</p>
-      <div class="big mono">${esc(inv.code)}</div><div class="foot"><button class="btn" data-close>Done</button></div>`);
+    sheet(`<h3>Invite to ${esc(f.name)}</h3><p>On each other laptop, choose Join with a code and type this. Anyone you give it to can join.</p>
+      <div class="tiles">${[...inv.code].map(c => `<div>${c}</div>`).join('')}</div><div class="timer" id="tm"></div>
+      <div class="foot"><button class="btn" data-close style="margin-left:auto">Done</button></div>`, sh => {
+      const t = () => { const s = Math.max(0, Math.round((inv.until - Date.now()) / 1000)); $('#tm', sh).textContent = s ? `Works for ${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')} more` : 'This code has run out; invite again for a new one'; };
+      t(); sh.timer = setInterval(t, 1000);
+    });
+    tick();
   } catch (e) { toast(e.message); }
 }
 function settingsSheet() {
   sheet(`<h3>Settings</h3>
-    <div class="setrow"><p class="small">This laptop's name</p><div class="line"><input class="field" id="nm" value="${esc(S.device.name)}"><button class="btn plain" id="sv">Save</button></div></div>
-    <div class="setrow"><p class="small">Laptops added by address, for networks that keep laptops from finding each other. This one is at ${esc(S.addresses.join(', ') || 'no address')}.</p>
-      <div class="line"><input class="field" id="ad" placeholder="192.168.1.20" spellcheck="false"><button class="btn plain" id="add">Add</button></div>
-      ${S.manual.map(m => `<p class="small">${esc(m)} · <button class="textlink" data-rm="${esc(m)}">Remove</button></p>`).join('')}</div>
-    <p class="small" style="margin-top:12px">Folder Sync ${esc(S.version)} keeps syncing after its window is closed; opening it again brings the window back.</p>
-    <div class="foot"><button class="btn plain" id="quit">Quit Folder Sync</button><button class="btn" data-close>Done</button></div>`, (sh, close, fail) => {
+    <div class="set"><div class="k">This laptop</div><div class="row"><input class="field" id="nm" value="${esc(S.device.name)}"><button class="btn ghost" id="sv">Save</button></div></div>
+    <div class="set"><div class="k">Laptops by address</div><p style="margin:0 0 10px;font-size:13px">For networks that keep laptops from finding each other. This one is at <span class="mono">${esc(S.addresses.join(', ') || 'no address')}</span>.</p>
+      <div class="row"><input class="field mono" id="ad" placeholder="192.168.1.20" spellcheck="false"><button class="btn ghost" id="add">Add</button></div>
+      ${S.manual.map(m => `<div class="file"><span class="mono">${esc(m)}</span><button class="link" style="margin-left:auto" data-rm="${esc(m)}">Remove</button></div>`).join('')}</div>
+    <p style="margin:14px 0 0;font-size:12.5px">Folder Sync ${esc(S.version)} keeps syncing after its window closes; opening it again brings the window back.</p>
+    <div class="foot"><button class="btn ghost" id="quit">Quit Folder Sync</button><button class="btn" data-close>Done</button></div>`, (sh, close, fail) => {
     const post = (path, body, done) => api(path, body).then(() => { done && toast(done); close(); tick(); }, fail);
     $('#sv', sh).onclick = () => post('/api/device', { name: $('#nm', sh).value }, 'Saved');
     $('#add', sh).onclick = () => post('/api/peers/add', { addr: $('#ad', sh).value }, 'Added');
     sh.querySelectorAll('[data-rm]').forEach(b => b.onclick = () => post('/api/peers/remove', { addr: b.dataset.rm }));
-    $('#quit', sh).onclick = async () => { await api('/api/quit', {}); document.body.innerHTML = '<div class="welcome" style="margin-top:30vh"><h2>Folder Sync has quit</h2><p>Open it again to sync.</p></div>'; window.close(); };
+    $('#quit', sh).onclick = async () => { await api('/api/quit', {}); document.body.innerHTML = '<div class="hello"><h1>Folder Sync<br>has quit.</h1><p>Open it again to keep syncing.</p></div>'; window.close(); };
   });
 }
 function menu(anchor) {
   const f = folder(), r = anchor.getBoundingClientRect();
-  document.body.insertAdjacentHTML('beforeend', `<div class="menu" style="top:${r.bottom + 6}px;right:${Math.max(8, innerWidth - r.right)}px"><button data-do="open">Open folder</button><button data-m class="err">Stop syncing this folder</button></div>`);
+  document.body.insertAdjacentHTML('beforeend', `<div class="menu" style="top:${r.bottom + 6}px;right:${Math.max(8, innerWidth - r.right)}px"><button data-do="open">Open folder</button><button data-do="invite">${f.invite ? 'Show the invite' : 'Invite'}</button><button data-m class="danger">Stop syncing this folder</button></div>`);
   const m = document.body.lastElementChild;
   setTimeout(() => document.addEventListener('click', () => m.remove(), { once: true }));
-  $('[data-m]', m).onclick = () => sheet(`<h3>Stop syncing ${esc(f.name)}?</h3><p>The files stay on this laptop. Changes stop going to and coming from the others.</p>${foot('Stop syncing')}`, (sh, close) => {
-    $('#go', sh).onclick = async () => { await api('/api/folders/remove', { id: f.id }); close(); sel = ''; lastHead = ''; tick(); };
+  $('[data-m]', m).onclick = () => sheet(`<h3>Stop syncing ${esc(f.name)}?</h3><p>The files stay on this laptop. Changes stop going to and coming from the others.</p>${buttons('Stop syncing', true)}`, (sh, close) => {
+    $('#go', sh).onclick = async () => { await api('/api/folders/remove', { id: f.id }); close(); sel = ''; tick(); };
   });
 }
 
 async function run(path, body) {
-  if (G) { G.busy = true; redraw(); }
+  if (G) { G.busy = true; render(); }
   try { toast((await api(path, { f: sel, ...body })).message); return true; } catch (e) { toast(e.message); return false; }
-  finally { await gitTick(); if (tab === 'history') loadLog(); }
+  finally { await gitTick(); loadLog(); }
 }
 
 document.addEventListener('click', async e => {
-  const t = e.target.closest('[data-f],[data-tab],[data-do],[data-url],[data-c],[data-file]'), d = t?.dataset;
+  const t = e.target.closest('[data-f],[data-do],[data-url],[data-c],[data-file]'), d = t?.dataset;
   if (!t) return;
-  if (d.f) return select(d.f);
-  if (d.tab) { tab = d.tab; keep('tab', tab); lastHead = ''; if (tab === 'history') loadLog(); return redraw(); }
+  if (d.f) return d.f !== sel && select(d.f);
   if (d.url) return api('/api/open-url', { url: d.url });
   if (d.file !== undefined) {
     open.file = open.file === d.file ? '' : d.file; open.diff = null; redraw();
@@ -327,7 +425,7 @@ document.addEventListener('click', async e => {
     new: () => addSheet(false), join: () => addSheet(true), settings: () => S && settingsSheet(), menu: () => menu(t),
     open: () => api('/api/open', { f: f.id }), invite: () => inviteSheet(f),
     identity: () => sheet(`<h3>Name on your commits</h3><p>Use the email of your GitHub account, so GitHub shows the commits as yours.</p>
-      <div class="stack"><input class="field" id="nm" placeholder="Name" value="${esc(G.identity.name)}"><input class="field" id="em" placeholder="Email" value="${esc(G.identity.email)}"></div>${foot('Save')}`,
+      <input class="field" id="nm" placeholder="Name" value="${esc(G.identity.name)}"><input class="field" id="em" placeholder="Email" style="margin-top:10px" value="${esc(G.identity.email)}">${buttons('Save', true)}`,
       (sh, close, fail) => $('#go', sh).onclick = () => api('/api/git/identity', { f: sel, name: $('#nm', sh).value, email: $('#em', sh).value }).then(() => { close(); gitTick(); }, fail)),
     connect: () => run('/api/git/connect', { url: $('#url').value }),
     commit: async () => { if (await run('/api/git/commit', { message: $('#msg').value }) && $('#msg')) $('#msg').value = ''; },
@@ -341,8 +439,8 @@ document.addEventListener('keydown', e => {
 
 tick().then(gitTick);
 setInterval(tick, 1000);
-setInterval(() => tab !== 'activity' && gitTick(), 2500);
-setInterval(() => tab === 'activity' && redraw(), 30000);
+setInterval(gitTick, 2500);
+setInterval(redraw, 30000);
 </script>
 </body>
 </html>

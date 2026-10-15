@@ -64,6 +64,13 @@ pub struct Entry {
     pub by: String,
 }
 
+impl Entry {
+    /// A folder is kept as an entry whose hash is "dir", a symbolic link as "link:" and where it points.
+    pub fn is_file(&self) -> bool {
+        self.hash != "dir" && !self.hash.starts_with("link:")
+    }
+}
+
 #[derive(PartialEq, Debug)]
 pub enum Order {
     Equal,
@@ -148,7 +155,7 @@ impl Index {
     }
 
     pub fn files_and_bytes(&self) -> (u64, u64) {
-        self.entries.values().filter(|e| !e.deleted).fold((0, 0), |(n, b), e| (n + 1, b + e.size))
+        self.entries.values().filter(|e| !e.deleted && e.is_file()).fold((0, 0), |(n, b), e| (n + 1, b + e.size))
     }
 }
 
@@ -177,6 +184,8 @@ pub struct Folder {
     pub idx: Mutex<Index>,
     pub act: Mutex<VecDeque<Activity>>,
     pub st: Mutex<Status>,
+    /// The .gitignore and .syncignore rules found in the folder at the last look.
+    pub rules: Mutex<Vec<crate::sync::Rule>>,
     pub git: Mutex<crate::git::State>,
     pub git_busy: AtomicBool,
     pub gone: AtomicBool,
@@ -271,6 +280,7 @@ impl App {
             idx: Mutex::new(read_json(&ix_file)),
             act: Default::default(),
             st: Default::default(),
+            rules: Default::default(),
             git: Default::default(),
             git_busy: Default::default(),
             gone: Default::default(),
