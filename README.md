@@ -11,6 +11,14 @@ between, and a GitHub repository behind each one that anyone commits to with one
 - **History**: every commit with who made it and when, the files it changed, and their diffs.
 - **Changes**: what is not committed yet, and which laptop changed each file.
 
+<img src="docs/images/timeline.png" width="820" alt="A project: what is not committed yet, then commits and what each laptop changed">
+
+| A commit, its files and a diff | Inviting with a 4-digit code |
+| --- | --- |
+| <img src="docs/images/commit.png" width="400"> | <img src="docs/images/invite.png" width="400"> |
+| **Joining on another laptop** | **Before any folder is shared** |
+| <img src="docs/images/join.png" width="400"> | <img src="docs/images/welcome.png" width="400"> |
+
 ## Getting started
 
 1. Run `folder-sync.exe`. It opens its own window (Edge or Chrome in app mode).
