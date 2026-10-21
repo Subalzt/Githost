@@ -1,0 +1,37 @@
+name: Windows release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: read
+
+jobs:
+  release:
+    runs-on: windows-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - name: Test
+        run: cargo test --locked
+      - name: Build Windows executable
+        run: cargo build --release --locked
+      - name: Package Windows download
+        shell: pwsh
+        run: Compress-Archive -Path target/release/githost.exe, README.md, docs -DestinationPath target/release/githost-windows-x64.zip
+      - name: Publish downloads
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ github.ref_name }}
+        run: |
+          gh release view $env:RELEASE_TAG *> $null
+          if ($LASTEXITCODE -eq 0) {
+            gh release upload $env:RELEASE_TAG target/release/githost.exe target/release/githost-windows-x64.zip --clobber
+          } else {
+            gh release create $env:RELEASE_TAG target/release/githost.exe target/release/githost-windows-x64.zip --verify-tag --generate-notes --title "Githost $env:RELEASE_TAG"
+          }
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }

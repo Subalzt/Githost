@@ -26,7 +26,9 @@ between, and a GitHub repository behind each one that anyone commits to with one
 
 ## Getting started
 
-1. Run `githost.exe`. It opens its own window (Edge or Chrome in app mode).
+1. Open the [latest release](https://github.com/Subalzt/Githost/releases/latest) and download
+   **githost.exe** under **Assets** (or extract it from **githost-windows-x64.zip**). Run it on
+   each Windows laptop. It opens its own window (Edge or Chrome in app mode).
 2. Windows asks whether it may use the network: allow it on **Private networks**. Without that,
    other laptops cannot reach this one.
 3. **New shared folder**, choose the folder, and read out the 4-digit code it shows. On the other
@@ -42,6 +44,17 @@ Closing the window keeps the folders syncing. Opening the app again brings the w
 
 Git must be installed ([git-scm.com](https://git-scm.com/downloads)) for the repository part;
 syncing works without it.
+
+### If you opened the HTML file and cannot choose a folder
+
+`src/ui.html` is the app's interface, served by the executable. Opening it directly in a browser
+does not start Githost, so it cannot open the folder picker or sync files. Run `githost.exe` instead;
+its window connects to the app on this laptop at `http://127.0.0.1:47800/`.
+
+GitHub's **Code → Download ZIP** and the release's **Source code** downloads contain source code,
+so they do not include an executable. Download the executable from the release's **Assets**, or
+build and start it from the source folder with `cargo run --release` (requires
+[Rust](https://www.rust-lang.org/tools/install)). If the app has stopped, run the executable again.
 
 ## What travels
 
@@ -94,3 +107,7 @@ cargo build --release
 
 The app is `target/release/githost.exe`. For trying two on one laptop:
 `--data DIR --port N --disc N --disc-send N,M --no-window`.
+
+Pushing a `v*` tag runs the Windows release workflow, which tests and builds the app and attaches
+`githost.exe` and `githost-windows-x64.zip` to the GitHub release. The ZIP includes this README and
+its screenshots; users can run the executable without installing Rust.

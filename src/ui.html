@@ -130,6 +130,10 @@ pre .a { background: var(--add); } pre .d { background: var(--del); } pre .h { c
 .hello { max-width: 720px; margin: 0 auto; padding: 14vh 40px 40px; }
 .hello h1 { font-size: 40px; margin: 0 0 14px; }
 .hello p { color: var(--ink2); font-size: 15px; max-width: 520px; margin: 0 0 26px; }
+.startup .pill { flex-wrap: wrap; }
+.startup a.btn { display: inline-block; text-decoration: none; }
+.startup code { font-family: var(--mono); }
+.rail .add:disabled { color: var(--ink3); cursor: default; background: none; }
 .steps { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; margin: 40px 0 0; }
 .steps div { background: var(--panel); border: 1px solid var(--line); border-radius: 6px; padding: 14px; color: var(--ink2); font-size: 13px; }
 .steps b { display: block; font: 600 12px var(--mono); color: var(--pri-t); margin-bottom: 6px; }
@@ -175,15 +179,21 @@ pre .a { background: var(--add); } pre .d { background: var(--del); } pre .h { c
     <div id="peers"></div>
     <div class="me" id="me"></div>
   </aside>
-  <main id="main"></main>
+  <main id="main"><div class="hello" role="status"><h1>Starting Githost…</h1><p>Connecting to the app on this laptop.</p></div></main>
 </div>
 <script>
 const $ = (s, el = document) => el.querySelector(s);
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c => `&#${c.charCodeAt(0)};`);
+const localPage = location.protocol === 'http:' && ['127.0.0.1', 'localhost'].includes(location.hostname);
+const connectionError = 'Cannot reach Githost. Open githost.exe on this laptop, then try again.';
 const api = async (path, body) => {
-  const r = await fetch(path, body && { method: 'POST', headers: { 'X-FS': '1' }, body: JSON.stringify(body) });
-  const j = await r.json().catch(() => ({}));
-  if (!r.ok) throw new Error(j.error || 'Error ' + r.status);
+  if (!localPage) throw new Error('Open githost.exe to choose and sync folders. This HTML file cannot run the app by itself.');
+  let r;
+  try { r = await fetch(path, body && { method: 'POST', headers: { 'X-FS': '1' }, body: JSON.stringify(body) }); }
+  catch { throw new Error(connectionError); }
+  const j = await r.json().catch(() => null);
+  if (!r.ok) throw new Error(j?.error || 'Error ' + r.status);
+  if (!j) throw new Error(connectionError);
   return j;
 };
 const ago = ms => {
@@ -239,6 +249,7 @@ const statusOf = f => f.error ? ['bad', f.error] : f.pending || f.current ? ['bu
 const put = (el, html) => { if (el && last[el.id] !== html) { last[el.id] = html; el.innerHTML = html; } };
 
 function render() {
+  if (!S) return;
   put($('#folders'), S.folders.map(f => {
     const [d] = statusOf(f);
     return `<button class="proj ${f.id === sel ? 'sel' : ''}" data-f="${f.id}"><div class="n"><span class="ell">${esc(f.name)}</span><span class="dot ${d}" style="margin-left:auto"></span></div>
@@ -344,8 +355,23 @@ function diffHtml(d) {
   return `<pre>${lines.map(l => `<span class="${{ '+': 'a', '-': 'd', '@': 'h' }[l[0]] || ''}">${esc(l) || ' '}</span>`).join('')}</pre>`;
 }
 
+function startupHelp() {
+  const main = $('#main');
+  if (main.dataset.v === 'startup') return;
+  main.dataset.v = 'startup';
+  document.querySelectorAll('[data-do]').forEach(b => b.disabled = true);
+  main.innerHTML = `<div class="hello startup" role="alert"><h1>${localPage ? 'Cannot connect to Githost' : 'Open Githost to get started'}</h1>
+    <p>${localPage ? 'Run <strong>githost.exe</strong> on this laptop to reconnect. This page will try again automatically.' : 'This HTML file is only the interface. Run <strong>githost.exe</strong> on this laptop; it opens the app and lets you choose folders.'}</p>
+    <p>Download <strong>githost.exe</strong> from <strong>Assets</strong> on the release page. The source code ZIP contains the code to build the app.</p>
+    <div class="pill"><a class="btn" href="https://github.com/Subalzt/Githost/releases/latest" target="_blank" rel="noopener noreferrer">Download for Windows</a>
+      ${localPage ? '<button class="btn ghost" id="retry">Try again</button>' : '<a class="btn ghost" href="http://127.0.0.1:47800/">Open running app</a>'}</div>
+    <p style="margin-top:26px">Building from source? Run <code>cargo run --release</code> in the project folder.</p></div>`;
+  $('#retry')?.addEventListener('click', () => tick());
+}
+
 async function tick() {
-  try { S = await api('/api/state'); } catch { return; }
+  try { S = await api('/api/state'); } catch { if (!S) startupHelp(); return; }
+  document.querySelectorAll('[data-do]:disabled').forEach(b => { if (b.closest('.rail')) b.disabled = false; });
   if (!folder() && S.folders.length) select(S.folders[0].id); else render();
 }
 async function gitTick() {
@@ -480,10 +506,14 @@ document.addEventListener('keydown', e => {
   if (e.key === 'Enter' && (e.ctrlKey || e.metaKey) && e.target.id === 'msg') $('[data-do="commit"]:not(:disabled)')?.click();
 });
 
-tick().then(gitTick);
-setInterval(tick, 1000);
-setInterval(gitTick, 2500);
-setInterval(redraw, 30000);
+if (localPage) {
+  tick().then(gitTick);
+  setInterval(tick, 1000);
+  setInterval(gitTick, 2500);
+  setInterval(redraw, 30000);
+} else {
+  startupHelp();
+}
 </script>
 </body>
 </html>
